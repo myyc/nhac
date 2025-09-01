@@ -8,6 +8,8 @@ import '../models/album.dart';
 import '../models/song.dart';
 import '../models/artist.dart';
 import 'artist_detail_screen.dart';
+import '../widgets/custom_window_frame.dart';
+import 'dart:io' show Platform;
 
 class AlbumDetailScreen extends StatefulWidget {
   final Album album;
@@ -75,7 +77,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     final api = context.read<AuthProvider>().api;
     final cacheProvider = context.read<CacheProvider>();
     
-    return Scaffold(
+    final scaffold = Scaffold(
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
@@ -296,5 +298,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   ),
                 ),
     );
+    
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return CustomWindowFrame(
+        child: scaffold,
+      );
+    }
+    
+    return scaffold;
   }
 }

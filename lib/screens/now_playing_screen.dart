@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../widgets/custom_window_frame.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/cache_provider.dart';
@@ -35,7 +36,7 @@ class NowPlayingScreen extends StatelessWidget {
         final theme = Theme.of(context);
         final isDark = theme.brightness == Brightness.dark;
 
-        return Scaffold(
+        final scaffold = Scaffold(
           appBar: AppBar(
             backgroundColor: Colors.transparent,
             elevation: 0,
@@ -329,6 +330,14 @@ class NowPlayingScreen extends StatelessWidget {
             ),
           ),
         );
+        
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          return CustomWindowFrame(
+            child: scaffold,
+          );
+        }
+        
+        return scaffold;
       },
     );
   }

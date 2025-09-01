@@ -2,42 +2,88 @@ import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'dart:io' show Platform;
 
-class CustomWindowFrame extends StatelessWidget {
+class CustomWindowFrame extends StatefulWidget {
   final Widget child;
-  final Function(BuildContext)? onMenuPressed;
+  final bool showMenuButton;
 
   const CustomWindowFrame({
     super.key,
     required this.child,
-    this.onMenuPressed,
+    this.showMenuButton = false,
   });
+
+  @override
+  State<CustomWindowFrame> createState() => _CustomWindowFrameState();
+}
+
+class _CustomWindowFrameState extends State<CustomWindowFrame> {
+  bool _isHoveringButtons = false;
+
+  void _showMenu(BuildContext context) {
+    showMenu(
+      context: context,
+      position: const RelativeRect.fromLTRB(0, 48, 0, 0),
+      items: [
+        const PopupMenuItem(
+          value: 'logout',
+          child: Text('Logout'),
+        ),
+      ],
+    ).then((value) {
+      if (value == 'logout' && mounted) {
+        // Import and call logout from auth provider
+        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+      }
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
     if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
-      return child;
+      return widget.child;
     }
 
     return Stack(
       children: [
         // Main content
-        child,
-        // Window control buttons positioned at top right
+        widget.child,
+        // Hover area for window controls - positioned to match AppBar
         Positioned(
           top: 0,
           right: 0,
-          child: WindowTitleBarBox(
-            child: WindowButtons(onMenuPressed: onMenuPressed),
+          child: MouseRegion(
+            onEnter: (_) => setState(() => _isHoveringButtons = true),
+            onExit: (_) => setState(() => _isHoveringButtons = false),
+            child: AnimatedOpacity(
+              opacity: _isHoveringButtons ? 1.0 : 0.0,
+              duration: const Duration(milliseconds: 200),
+              child: Container(
+                width: widget.showMenuButton ? 112 : 56,
+                height: 56,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+                  borderRadius: const BorderRadius.only(
+                    bottomLeft: Radius.circular(8),
+                  ),
+                ),
+                child: WindowTitleBarBox(
+                  child: WindowButtons(
+                    showMenuButton: widget.showMenuButton,
+                    onMenuPressed: widget.showMenuButton ? _showMenu : null,
+                  ),
+                ),
+              ),
+            ),
           ),
         ),
         // Invisible draggable area at the top
         Positioned(
           top: 0,
           left: 0,
-          right: onMenuPressed != null ? 112 : 56, // Leave space for buttons
+          right: widget.showMenuButton ? 112 : 56, // Leave space for buttons
           child: WindowTitleBarBox(
             child: Container(
-              height: 48, // Same height as the app bar
+              height: 56, // Same height as the app bar
               color: Colors.transparent,
               child: MoveWindow(),
             ),
@@ -48,54 +94,37 @@ class CustomWindowFrame extends StatelessWidget {
   }
 }
 
-class WindowButtons extends StatefulWidget {
+class WindowButtons extends StatelessWidget {
+  final bool showMenuButton;
   final Function(BuildContext)? onMenuPressed;
   
   const WindowButtons({
     super.key,
+    this.showMenuButton = false,
     this.onMenuPressed,
   });
-
-  @override
-  State<WindowButtons> createState() => _WindowButtonsState();
-}
-
-class _WindowButtonsState extends State<WindowButtons> {
-  final GlobalKey _menuButtonKey = GlobalKey();
-
-  void _handleMenuPress() {
-    if (widget.onMenuPressed != null && _menuButtonKey.currentContext != null) {
-      widget.onMenuPressed!(_menuButtonKey.currentContext!);
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     
     return Container(
-      height: 48,
+      height: 56,
       color: Colors.transparent,
-      padding: const EdgeInsets.only(right: 8),
       child: Row(
+        mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          if (widget.onMenuPressed != null)
-            _WindowButton(
-              key: _menuButtonKey,
-              icon: Icons.menu,
-              onPressed: _handleMenuPress,
-              hoverColor: theme.colorScheme.onSurface.withOpacity(0.08),
-              iconColor: theme.colorScheme.onSurface,
+          if (showMenuButton && onMenuPressed != null)
+            IconButton(
+              icon: Icon(Icons.menu),
               iconSize: 24,
+              onPressed: () => onMenuPressed!(context),
             ),
-          if (widget.onMenuPressed != null)
-            const SizedBox(width: 8),
-          _WindowButton(
-            icon: Icons.close,
+          IconButton(
+            icon: Icon(Icons.close),
+            iconSize: 24,
             onPressed: () => appWindow.close(),
             hoverColor: Colors.red.withOpacity(0.1),
-            iconColor: theme.colorScheme.onSurface,
-            iconSize: 24,
           ),
         ],
       ),
@@ -103,56 +132,4 @@ class _WindowButtonsState extends State<WindowButtons> {
   }
 }
 
-class _WindowButton extends StatefulWidget {
-  final IconData icon;
-  final VoidCallback onPressed;
-  final Color? hoverColor;
-  final Color? iconColor;
-  final double? iconSize;
-  
-  const _WindowButton({
-    super.key,
-    required this.icon,
-    required this.onPressed,
-    this.hoverColor,
-    this.iconColor,
-    this.iconSize,
-  });
-  
-  @override
-  State<_WindowButton> createState() => _WindowButtonState();
-}
-
-class _WindowButtonState extends State<_WindowButton> {
-  bool _isHovering = false;
-  
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    
-    return MouseRegion(
-      onEnter: (_) => setState(() => _isHovering = true),
-      onExit: (_) => setState(() => _isHovering = false),
-      child: GestureDetector(
-        onTap: widget.onPressed,
-        child: Container(
-          width: 48,
-          height: 48,
-          decoration: BoxDecoration(
-            color: _isHovering 
-                ? (widget.hoverColor ?? theme.colorScheme.onSurface.withOpacity(0.08))
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(4),
-          ),
-          child: Center(
-            child: Icon(
-              widget.icon,
-              size: widget.iconSize ?? 18,
-              color: widget.iconColor ?? theme.colorScheme.onSurface,
-            ),
-          ),
-        ),
-      ),
-    );
-  }
-}
+// Removed _WindowButton class as we now use standard IconButton

@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -116,13 +117,29 @@ class NhacteApp extends StatelessWidget {
               themeProvider.setPlayerProvider(playerProvider);
             }
             
-            return MaterialApp(
-              title: 'Nhacte',
-              debugShowCheckedModeBanner: false,
-              theme: themeProvider.getLightTheme(),
-              darkTheme: themeProvider.getDarkTheme(),
-              themeMode: ThemeMode.system,
-              home: const AuthWrapper(),
+            return CallbackShortcuts(
+              bindings: {
+                LogicalKeySet(LogicalKeyboardKey.space): () {
+                  // Only toggle play/pause if no text field is focused
+                  final primaryFocus = FocusManager.instance.primaryFocus;
+                  if (primaryFocus != null && 
+                      primaryFocus.context != null && 
+                      primaryFocus.context!.widget is! EditableText) {
+                    playerProvider.togglePlayPause();
+                  }
+                },
+              },
+              child: Focus(
+                autofocus: true,
+                child: MaterialApp(
+                  title: 'Nhacte',
+                  debugShowCheckedModeBanner: false,
+                  theme: themeProvider.getLightTheme(),
+                  darkTheme: themeProvider.getDarkTheme(),
+                  themeMode: ThemeMode.system,
+                  home: const AuthWrapper(),
+                ),
+              ),
             );
           },
         ),

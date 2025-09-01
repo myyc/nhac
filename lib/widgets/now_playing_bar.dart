@@ -124,18 +124,21 @@ class NowPlayingBar extends StatelessWidget {
                                   ? playerProvider.previous
                                   : null,
                             ),
-                            IconButton(
-                              icon: Icon(
-                                playerProvider.isPlaying 
-                                    ? Icons.pause 
-                                    : Icons.play_arrow,
+                            Container(
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: extractedColors?.primary ?? theme.colorScheme.primary,
                               ),
-                              style: IconButton.styleFrom(
-                                backgroundColor: extractedColors?.primary ?? theme.colorScheme.primary,
-                                foregroundColor: Colors.white,
+                              child: IconButton(
+                                icon: Icon(
+                                  playerProvider.isPlaying 
+                                      ? Icons.pause 
+                                      : Icons.play_arrow,
+                                  color: Colors.white,
+                                ),
                                 padding: const EdgeInsets.all(8),
+                                onPressed: playerProvider.togglePlayPause,
                               ),
-                              onPressed: playerProvider.togglePlayPause,
                             ),
                             IconButton(
                               icon: const Icon(Icons.skip_next),
