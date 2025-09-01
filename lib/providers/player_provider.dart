@@ -21,7 +21,7 @@ class PlayerProvider extends ChangeNotifier {
   CacheService? _cacheService;
   Timer? _preloadTimer;
   ConcatenatingAudioSource? _playlist;
-  NhacteAudioHandler? _audioHandler;
+  NhacAudioHandler? _audioHandler;
   
   Song? _currentSong;
   String? _currentCoverArtPath; // Local path to cached cover art

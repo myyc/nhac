@@ -118,7 +118,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                             child: CachedNetworkImage(
                               imageUrl: api.getCoverArtUrl(album.coverArt),
                               httpHeaders: const {
-                                'User-Agent': 'nhacte/1.0.0',
+                                'User-Agent': 'nhac/1.0.0',
                               },
                               fit: BoxFit.cover,
                               width: double.infinity,

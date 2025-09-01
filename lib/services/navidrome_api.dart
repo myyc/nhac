@@ -10,7 +10,7 @@ class NavidromeApi {
   final String baseUrl;
   final String username;
   final String password;
-  final String clientName = 'nhacte';
+  final String clientName = 'nhac';
   final String apiVersion = '1.16.1';
   
   // Cache auth params for stable URLs

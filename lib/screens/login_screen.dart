@@ -141,7 +141,7 @@ class _LoginScreenState extends State<LoginScreen> {
                             ),
                             const SizedBox(height: 24),
                             Text(
-                              'Welcome to Nhacte',
+                              'Welcome to Nhac',
                               style: theme.textTheme.headlineMedium?.copyWith(
                                 fontWeight: FontWeight.w700,
                                 letterSpacing: -0.5,

@@ -143,7 +143,7 @@ class _RecentlyAddedScreenState extends State<RecentlyAddedScreen> {
                               child: CachedNetworkImage(
                                 imageUrl: api.getCoverArtUrl(album.coverArt, size: 160),
                                 httpHeaders: const {
-                                  'User-Agent': 'nhacte/1.0.0',
+                                  'User-Agent': 'nhac/1.0.0',
                                 },
                                 fit: BoxFit.cover,
                                 placeholder: (context, url) => 
