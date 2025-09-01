@@ -77,10 +77,11 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
           ),
         ),
         // Invisible draggable area at the top
+        // Start at left: 56 to avoid overlapping with back button
         Positioned(
           top: 0,
-          left: 0,
-          right: widget.showMenuButton ? 112 : 56, // Leave space for buttons
+          left: 56, // Leave space for back button
+          right: widget.showMenuButton ? 112 : 56, // Leave space for window buttons
           child: WindowTitleBarBox(
             child: Container(
               height: 56, // Same height as the app bar

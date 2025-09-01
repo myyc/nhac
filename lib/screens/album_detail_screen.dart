@@ -9,6 +9,7 @@ import '../models/song.dart';
 import '../models/artist.dart';
 import 'artist_detail_screen.dart';
 import '../widgets/custom_window_frame.dart';
+import '../widgets/now_playing_bar.dart';
 import 'dart:io' show Platform;
 
 class AlbumDetailScreen extends StatefulWidget {
@@ -87,7 +88,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
       ),
-      body: _isLoading
+      body: Column(
+        children: [
+          Expanded(
+            child: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
               ? Center(
@@ -293,10 +297,22 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           },
                         ),
                         
-                      const SizedBox(height: 80), // Space for player bar
+                      const SizedBox(height: 16), // Small padding at bottom
                     ],
                   ),
                 ),
+          ),
+          // Mini player at the bottom
+          Consumer<PlayerProvider>(
+            builder: (context, playerProvider, _) {
+              if (playerProvider.currentSong != null) {
+                return const NowPlayingBar();
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
+      ),
     );
     
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {

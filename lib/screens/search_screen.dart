@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/cache_provider.dart';
@@ -140,27 +141,36 @@ class _SearchScreenState extends State<SearchScreen> {
     final api = context.read<AuthProvider>().api;
     final cacheProvider = context.read<CacheProvider>();
     
+    // Check if on mobile and wrap search bar with SafeArea
+    final searchBar = Padding(
+      padding: const EdgeInsets.all(16),
+      child: TextField(
+        controller: _searchController,
+        autofocus: true,
+        decoration: InputDecoration(
+          hintText: 'Search artists, albums, songs...',
+          prefixIcon: const Icon(Icons.search),
+          border: OutlineInputBorder(
+            borderRadius: BorderRadius.circular(28),
+          ),
+          filled: true,
+        ),
+        onChanged: (value) {
+          _search(value);
+        },
+      ),
+    );
+    
     return Column(
       children: [
-        // Search bar
-        Padding(
-          padding: const EdgeInsets.all(16),
-          child: TextField(
-            controller: _searchController,
-            autofocus: true,
-            decoration: InputDecoration(
-              hintText: 'Search artists, albums, songs...',
-              prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(
-                borderRadius: BorderRadius.circular(28),
-              ),
-              filled: true,
-            ),
-            onChanged: (value) {
-              _search(value);
-            },
-          ),
-        ),
+        // Search bar - wrap with SafeArea on mobile
+        if (Platform.isAndroid || Platform.isIOS)
+          SafeArea(
+            bottom: false,
+            child: searchBar,
+          )
+        else
+          searchBar,
         
         // Results
         Expanded(
