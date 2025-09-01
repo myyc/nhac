@@ -75,6 +75,12 @@ dependencies:
   # Audio service for media notifications and lock screen controls
   audio_service: ^0.18.18
   
+  # Typography
+  google_fonts: ^6.2.1
+  
+  # Color extraction from images
+  palette_generator: ^0.3.3+4
+  
 
 dev_dependencies:
   flutter_test:

@@ -9,12 +9,14 @@ import 'package:just_audio/just_audio.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/cache_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/database_helper.dart';
 import 'services/mpris_service.dart';
 import 'services/audio_handler.dart';
 import 'services/navidrome_api.dart';
+import 'theme/app_theme.dart';
 
 late NhacteAudioHandler? audioHandler;
 late AudioPlayer globalAudioPlayer;
@@ -105,26 +107,24 @@ class NhacteApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => AuthProvider()),
           ChangeNotifierProvider(create: (_) => PlayerProvider()),
           ChangeNotifierProvider(create: (_) => CacheProvider()),
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ],
-        child: MaterialApp(
-          title: 'Music Player',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.deepPurple,
-              brightness: Brightness.light,
-            ),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.deepPurple,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
-          themeMode: ThemeMode.system,
-          home: const AuthWrapper(),
+        child: Consumer2<ThemeProvider, PlayerProvider>(
+          builder: (context, themeProvider, playerProvider, child) {
+            // Connect the providers
+            if (themeProvider.currentColors == null) {
+              themeProvider.setPlayerProvider(playerProvider);
+            }
+            
+            return MaterialApp(
+              title: 'Nhacte',
+              debugShowCheckedModeBanner: false,
+              theme: themeProvider.getLightTheme(),
+              darkTheme: themeProvider.getDarkTheme(),
+              themeMode: ThemeMode.system,
+              home: const AuthWrapper(),
+            );
+          },
         ),
       ),
     );

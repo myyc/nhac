@@ -5,7 +5,6 @@ import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
-import '../widgets/custom_title_bar.dart';
 import 'album_detail_screen.dart';
 import 'app_scaffold.dart';
 
@@ -62,7 +61,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     final cacheProvider = context.read<CacheProvider>();
     
     return AppScaffold(
-      appBar: CustomTitleBar(
+      appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),

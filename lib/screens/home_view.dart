@@ -60,72 +60,148 @@ class _HomeViewState extends State<HomeView> {
   Widget _buildAlbumCard(Album album, {double size = 160}) {
     final cacheProvider = context.read<CacheProvider>();
     
-    return GestureDetector(
-      onTap: () {
-        Navigator.push(
-          context,
-          MaterialPageRoute(
-            builder: (context) => AlbumDetailScreen(album: album),
-          ),
-        );
-      },
-      child: Container(
-        width: size,
-        margin: const EdgeInsets.only(right: 12),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Container(
-              width: size,
-              height: size,
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(8),
-                color: Theme.of(context).colorScheme.surfaceVariant,
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.1),
-                    blurRadius: 8,
-                    offset: const Offset(0, 2),
+    return MouseRegion(
+      cursor: SystemMouseCursors.click,
+      child: GestureDetector(
+        onTap: () {
+          Navigator.push(
+            context,
+            MaterialPageRoute(
+              builder: (context) => AlbumDetailScreen(album: album),
+            ),
+          );
+        },
+        child: AnimatedContainer(
+          duration: const Duration(milliseconds: 200),
+          curve: Curves.easeOutCubic,
+          width: size,
+          margin: const EdgeInsets.only(right: 16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Stack(
+                children: [
+                  Container(
+                    width: size,
+                    height: size,
+                    decoration: BoxDecoration(
+                      borderRadius: BorderRadius.circular(12),
+                      color: Theme.of(context).colorScheme.surfaceVariant,
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.08),
+                          blurRadius: 12,
+                          offset: const Offset(0, 4),
+                          spreadRadius: -2,
+                        ),
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.04),
+                          blurRadius: 6,
+                          offset: const Offset(0, 2),
+                          spreadRadius: -1,
+                        ),
+                      ],
+                    ),
+                    child: album.coverArt != null
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(12),
+                            child: CachedNetworkImage(
+                              key: ValueKey('home_${album.id}_${album.coverArt}'),
+                              imageUrl: cacheProvider.getCoverArtUrl(album.coverArt, size: 320),
+                              cacheKey: 'cover_${album.id}_${album.coverArt}_320',
+                              fit: BoxFit.cover,
+                              memCacheWidth: 320,
+                              memCacheHeight: 320,
+                              placeholder: (context, url) => Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Theme.of(context).colorScheme.surfaceVariant,
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.album,
+                                    size: 40,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                  ),
+                                ),
+                              ),
+                              errorWidget: (context, url, error) => Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(12),
+                                  color: Theme.of(context).colorScheme.surfaceVariant,
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.album,
+                                    size: 40,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          )
+                        : Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(12),
+                              color: Theme.of(context).colorScheme.surfaceVariant,
+                            ),
+                            child: Center(
+                              child: Icon(
+                                Icons.album,
+                                size: 40,
+                                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                              ),
+                            ),
+                          ),
+                  ),
+                  // Subtle gradient overlay
+                  Positioned(
+                    bottom: 0,
+                    left: 0,
+                    right: 0,
+                    child: Container(
+                      height: 40,
+                      decoration: BoxDecoration(
+                        borderRadius: const BorderRadius.only(
+                          bottomLeft: Radius.circular(12),
+                          bottomRight: Radius.circular(12),
+                        ),
+                        gradient: LinearGradient(
+                          begin: Alignment.topCenter,
+                          end: Alignment.bottomCenter,
+                          colors: [
+                            Colors.transparent,
+                            Colors.black.withOpacity(0.1),
+                          ],
+                        ),
+                      ),
+                    ),
                   ),
                 ],
               ),
-              child: album.coverArt != null
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(8),
-                      child: CachedNetworkImage(
-                        key: ValueKey('home_${album.id}_${album.coverArt}'),
-                        imageUrl: cacheProvider.getCoverArtUrl(album.coverArt, size: 320),
-                        cacheKey: 'cover_${album.id}_${album.coverArt}_320',
-                        fit: BoxFit.cover,
-                        memCacheWidth: 320,
-                        memCacheHeight: 320,
-                        placeholder: (context, url) => 
-                            const Center(child: Icon(Icons.album, size: 40)),
-                        errorWidget: (context, url, error) => 
-                            const Center(child: Icon(Icons.album, size: 40)),
-                      ),
-                    )
-                  : const Center(child: Icon(Icons.album, size: 40)),
-            ),
-            const SizedBox(height: 8),
-            Text(
-              album.name,
-              style: Theme.of(context).textTheme.bodyMedium?.copyWith(
-                fontWeight: FontWeight.w600,
-              ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-            ),
-            if (album.artist != null)
+              const SizedBox(height: 12),
               Text(
-                album.artist!,
-                style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                album.name,
+                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                  fontWeight: FontWeight.w600,
+                  letterSpacing: -0.1,
                 ),
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
               ),
-          ],
+              const SizedBox(height: 2),
+              if (album.artist != null)
+                Text(
+                  album.artist!,
+                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.65),
+                    letterSpacing: 0,
+                  ),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+            ],
+          ),
         ),
       ),
     );
@@ -138,24 +214,48 @@ class _HomeViewState extends State<HomeView> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          child: Text(
-            title,
-            style: Theme.of(context).textTheme.headlineSmall?.copyWith(
-              fontWeight: FontWeight.bold,
-            ),
+          padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(
+                title,
+                style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.w700,
+                  letterSpacing: -0.5,
+                ),
+              ),
+              TextButton(
+                onPressed: () {
+                  // TODO: Navigate to full section view
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                child: Text(
+                  'View all',
+                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
+                    color: Theme.of(context).colorScheme.primary,
+                    fontWeight: FontWeight.w500,
+                  ),
+                ),
+              ),
+            ],
           ),
         ),
+        const SizedBox(height: 8),
         SizedBox(
-          height: 210,
+          height: 220,
           child: ListView.builder(
             scrollDirection: Axis.horizontal,
-            padding: const EdgeInsets.symmetric(horizontal: 16),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
             itemCount: albums.length,
             itemBuilder: (context, index) => _buildAlbumCard(albums[index]),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: 32),
       ],
     );
   }
@@ -174,15 +274,30 @@ class _HomeViewState extends State<HomeView> {
           
           // Welcome message
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: Text(
-              _getGreeting(),
-              style: Theme.of(context).textTheme.headlineMedium?.copyWith(
-                fontWeight: FontWeight.bold,
-              ),
+            padding: const EdgeInsets.symmetric(horizontal: 20),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  _getGreeting(),
+                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                    fontWeight: FontWeight.w800,
+                    letterSpacing: -0.8,
+                    height: 1.1,
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  'What would you like to listen to today?',
+                  style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                    color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                    letterSpacing: -0.1,
+                  ),
+                ),
+              ],
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 32),
           
           _buildSection('Recently Added', _recentlyAdded),
           _buildSection('Most Played', _mostPlayed),

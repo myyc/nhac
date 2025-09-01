@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
-import '../providers/player_provider.dart';
 import '../widgets/custom_window_frame.dart';
 import 'home_view.dart';
 import 'search_screen.dart';
