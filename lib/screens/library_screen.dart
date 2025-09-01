@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/album.dart';
@@ -161,10 +162,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
       allAlbums.addAll(_albumsByArtist![artist]!);
     }
 
+    // Add safe top margin on mobile
+    final topPadding = (Platform.isAndroid || Platform.isIOS) 
+        ? MediaQuery.of(context).padding.top + 16 
+        : 16.0;
+    
     return RefreshIndicator(
       onRefresh: () => _loadAlbums(forceRefresh: true),
       child: GridView.builder(
-        padding: const EdgeInsets.all(16),
+        padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 200,
           childAspectRatio: 0.8,

@@ -48,11 +48,13 @@ class ColorExtractionService {
   ExtractedColors _processColors(PaletteGenerator palette) {
     // Primary color (most dominant)
     Color primary = palette.dominantColor?.color ?? Colors.blue;
+    primary = _ensureMinimumLuminosity(primary);
     
     // Accent color (vibrant or muted vibrant)
     Color accent = palette.vibrantColor?.color ?? 
                    palette.mutedColor?.color ?? 
                    primary;
+    accent = _ensureMinimumLuminosity(accent);
     
     // Background colors
     Color lightBackground = palette.lightMutedColor?.color ?? 
@@ -102,6 +104,19 @@ class ColorExtractionService {
   Color _getContrastingTextColor(Color backgroundColor) {
     final luminance = backgroundColor.computeLuminance();
     return luminance > 0.5 ? Colors.black87 : Colors.white;
+  }
+
+  /// Ensure a color has minimum luminosity for visibility
+  Color _ensureMinimumLuminosity(Color color, {double minLuminosity = 0.3}) {
+    final luminance = color.computeLuminance();
+    if (luminance < minLuminosity) {
+      // Calculate how much to lighten the color
+      final hsl = HSLColor.fromColor(color);
+      // Increase lightness proportionally to reach minimum luminosity
+      final targetLightness = hsl.lightness + (minLuminosity - luminance);
+      return hsl.withLightness(targetLightness.clamp(0.0, 1.0)).toColor();
+    }
+    return color;
   }
 
   /// Create gradient colors from primary and accent
