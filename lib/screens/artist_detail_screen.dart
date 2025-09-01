@@ -141,7 +141,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                               Text(
                                 album.name,
                                 style: Theme.of(context).textTheme.bodyMedium,
-                                maxLines: 2,
+                                maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
                               if (album.year != null)
