@@ -4,7 +4,7 @@ import '../services/navidrome_api.dart';
 
 class AuthProvider extends ChangeNotifier {
   final AuthService _authService = AuthService();
-  bool _isLoading = false;
+  bool _isLoading = true; // Start with loading state to prevent login screen flash
   String? _error;
 
   bool get isLoading => _isLoading;

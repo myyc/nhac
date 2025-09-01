@@ -173,9 +173,53 @@ class _AuthWrapperState extends State<AuthWrapper> {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         if (authProvider.isLoading) {
-          return const Scaffold(
+          // Random loading messages for fun
+          final loadingMessages = [
+            'Loading',
+            'Vibing',
+            'Crunching',
+            'Pondering',
+            'Simmering',
+            'Shimmering',
+            'Grooving',
+            'Jamming',
+            'Tuning',
+            'Spinning',
+            'Brewing',
+            'Syncing',
+            'Harmonizing',
+            'Composing',
+            'Buffering',
+          ];
+          final randomMessage = loadingMessages[
+            DateTime.now().millisecondsSinceEpoch % loadingMessages.length
+          ];
+          
+          return Scaffold(
+            backgroundColor: Theme.of(context).colorScheme.surface,
             body: Center(
-              child: CircularProgressIndicator(),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.music_note,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    randomMessage,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  CircularProgressIndicator(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+              ),
             ),
           );
         }
