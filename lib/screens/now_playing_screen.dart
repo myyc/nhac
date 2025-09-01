@@ -8,6 +8,7 @@ import '../providers/player_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
+import '../services/share_service.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
 
@@ -23,6 +24,7 @@ class NowPlayingScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final cacheProvider = context.read<CacheProvider>();
+    final shareService = ShareService();
     
     return Consumer<PlayerProvider>(
       builder: (context, playerProvider, child) {
@@ -44,6 +46,23 @@ class NowPlayingScreen extends StatelessWidget {
               icon: const Icon(Icons.arrow_back),
               onPressed: () => Navigator.of(context).pop(),
             ),
+            actions: [
+              if (Platform.isAndroid && song.coverArt != null)
+                IconButton(
+                  icon: const Icon(Icons.share),
+                  onPressed: () {
+                    // Capture theme before sharing
+                    final capturedTheme = InheritedTheme.capture(from: context, to: context);
+                    shareService.shareStoryImage(
+                      context: context,
+                      song: song,
+                      coverArtUrl: cacheProvider.getCoverArtUrl(song.coverArt!, size: 800),
+                      styleType: 'solid',
+                      capturedTheme: capturedTheme,
+                    );
+                  },
+                ),
+            ],
           ),
           body: Padding(
             padding: const EdgeInsets.all(24.0),

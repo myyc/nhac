@@ -81,6 +81,12 @@ dependencies:
   # Color extraction from images
   palette_generator: ^0.3.3+4
   
+  # Sharing functionality
+  share_plus: ^10.1.2
+  
+  # Screenshot generation
+  screenshot: ^3.0.0
+  
 
 dev_dependencies:
   flutter_test:
