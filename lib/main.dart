@@ -19,7 +19,7 @@ import 'services/audio_handler.dart';
 import 'services/navidrome_api.dart';
 import 'theme/app_theme.dart';
 
-late NhacteAudioHandler? audioHandler;
+late NhacAudioHandler? audioHandler;
 late AudioPlayer globalAudioPlayer;
 
 void main() async {
@@ -47,17 +47,17 @@ void main() async {
       password: '',
     );
     audioHandler = await AudioService.init(
-      builder: () => NhacteAudioHandler(
+      builder: () => NhacAudioHandler(
         globalAudioPlayer, // Use the shared player instance
         dummyApi, // This will be properly set later in PlayerProvider
       ),
       config: const AudioServiceConfig(
-        androidNotificationChannelId: 'dev.myyc.nhacte.channel.audio',
+        androidNotificationChannelId: 'dev.myyc.nhac.channel.audio',
         androidNotificationChannelName: 'Music playback',
         androidNotificationOngoing: false,
         androidStopForegroundOnPause: false, // Keep service alive during pause
       ),
-    ) as NhacteAudioHandler;
+    ) as NhacAudioHandler;
   } else {
     audioHandler = null;
   }
@@ -84,7 +84,7 @@ void main() async {
     });
   }
   
-  runApp(const NhacteApp());
+  runApp(const NhacApp());
   
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
     doWhenWindowReady(() {
@@ -97,8 +97,8 @@ void main() async {
   }
 }
 
-class NhacteApp extends StatelessWidget {
-  const NhacteApp({super.key});
+class NhacApp extends StatelessWidget {
+  const NhacApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -132,7 +132,7 @@ class NhacteApp extends StatelessWidget {
               child: Focus(
                 autofocus: true,
                 child: MaterialApp(
-                  title: 'Nhacte',
+                  title: 'Nhac',
                   debugShowCheckedModeBanner: false,
                   theme: themeProvider.getLightTheme(),
                   darkTheme: themeProvider.getDarkTheme(),

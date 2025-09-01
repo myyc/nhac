@@ -1,4 +1,4 @@
-package dev.myyc.nhacte
+package dev.myyc.nhac
 
 import com.ryanheise.audioservice.AudioServiceActivity
 

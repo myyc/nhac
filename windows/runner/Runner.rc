@@ -90,12 +90,12 @@ BEGIN
         BLOCK "040904e4"
         BEGIN
             VALUE "CompanyName", "dev.myyc" "\0"
-            VALUE "FileDescription", "nhacte" "\0"
+            VALUE "FileDescription", "nhac" "\0"
             VALUE "FileVersion", VERSION_AS_STRING "\0"
-            VALUE "InternalName", "nhacte" "\0"
+            VALUE "InternalName", "nhac" "\0"
             VALUE "LegalCopyright", "Copyright (C) 2025 dev.myyc. All rights reserved." "\0"
-            VALUE "OriginalFilename", "nhacte.exe" "\0"
-            VALUE "ProductName", "nhacte" "\0"
+            VALUE "OriginalFilename", "nhac.exe" "\0"
+            VALUE "ProductName", "nhac" "\0"
             VALUE "ProductVersion", VERSION_AS_STRING "\0"
         END
     END

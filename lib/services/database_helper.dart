@@ -9,7 +9,7 @@ import '../models/song.dart';
 
 class DatabaseHelper {
   static Database? _database;
-  static const String _databaseName = 'nhacte_cache.db';
+  static const String _databaseName = 'nhac_cache.db';
   static const int _databaseVersion = 1;
 
   static Future<Database> get database async {

@@ -27,7 +27,7 @@ static void my_application_activate(GApplication* application) {
       GTK_WINDOW(gtk_application_window_new(GTK_APPLICATION(application)));
 
   // Don't use GTK header bar - we'll use a custom window frame from Flutter
-  gtk_window_set_title(window, "nhacte");
+  gtk_window_set_title(window, "nhac");
 
   gtk_window_set_default_size(window, 1280, 720);
 

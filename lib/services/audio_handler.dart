@@ -4,14 +4,14 @@ import 'package:just_audio/just_audio.dart';
 import '../models/song.dart';
 import '../services/navidrome_api.dart';
 
-class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
+class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   NavidromeApi _api; // Made non-final to allow updates
   List<Song> _queue = [];
   List<String?> _coverArtPaths = []; // Local paths to cached cover art
   int _currentIndex = 0;
   
-  NhacteAudioHandler(this._player, this._api) {
+  NhacAudioHandler(this._player, this._api) {
     _notifyAudioHandlerAboutPlaybackEvents();
     _listenForDurationChanges();
     _listenForCurrentSongIndexChanges();
