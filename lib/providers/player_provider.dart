@@ -9,17 +9,20 @@ import '../services/navidrome_api.dart';
 import '../services/audio_cache_manager.dart';
 import '../services/mpris_service.dart';
 import '../services/audio_handler.dart';
+import '../services/cache_service.dart';
 import '../main.dart';
 
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _audioPlayer;
   final AudioCacheManager _cacheManager = AudioCacheManager();
   NavidromeApi? _api;
+  CacheService? _cacheService;
   Timer? _preloadTimer;
   ConcatenatingAudioSource? _playlist;
   NhacteAudioHandler? _audioHandler;
   
   Song? _currentSong;
+  String? _currentCoverArtPath; // Local path to cached cover art
   List<Song> _queue = [];
   int _currentIndex = 0;
   bool _isPlaying = false;
@@ -113,6 +116,7 @@ class PlayerProvider extends ChangeNotifier {
 
   void setApi(NavidromeApi api) {
     _api = api;
+    _cacheService = CacheService(api: api);
     // Update the audio handler with the proper API if on Android
     if (Platform.isAndroid && _audioHandler != null) {
       _audioHandler!.updateApi(api);
@@ -125,14 +129,31 @@ class PlayerProvider extends ChangeNotifier {
     if (_currentSong != null && _api != null && !_hasRestoredPosition) {
       _isRestoring = true;
       print('[PlayerProvider] API set, restoring audio for ${_currentSong!.title}');
-      final url = _api!.getStreamUrl(_currentSong!.id);
       
       // Store the position we want to restore
       final targetPosition = _position;
       
       try {
-        // Load the audio without playing
-        await _audioPlayer.setUrl(url);
+        // Cache cover art for the current song
+        await _cacheCoverArt(_currentSong!);
+        
+        // Update MPRIS metadata
+        if (Platform.isLinux) {
+          MprisService.instance.updateMetadata(_currentSong!);
+        }
+        
+        // Update audio handler for Android media session with cached art
+        if (Platform.isAndroid && _audioHandler != null) {
+          await _audioHandler!.updateQueueFromSongs(
+            [_currentSong!], 
+            startIndex: 0,
+            coverArtPaths: [_currentCoverArtPath],
+          );
+          // The audio handler will handle playback through the shared player
+        } else {
+          final url = _api!.getStreamUrl(_currentSong!.id);
+          await _audioPlayer.setUrl(url);
+        }
         
         // Seek to saved position after URL is loaded
         if (targetPosition.inMilliseconds > 0) {
@@ -152,6 +173,37 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> _cacheCoverArt(Song song) async {
+    if (_cacheService != null && song.coverArt != null) {
+      try {
+        _currentCoverArtPath = await _cacheService!.getCachedCoverArt(
+          song.coverArt,
+          size: 600, // Higher res for notification
+        );
+      } catch (e) {
+        print('Error caching cover art: $e');
+        _currentCoverArtPath = null;
+      }
+    } else {
+      _currentCoverArtPath = null;
+    }
+  }
+
+  Future<void> _preloadNextCoverArt() async {
+    if (_cacheService != null && 
+        _currentIndex < _queue.length - 1 && 
+        _queue[_currentIndex + 1].coverArt != null) {
+      try {
+        await _cacheService!.getCachedCoverArt(
+          _queue[_currentIndex + 1].coverArt,
+          size: 600,
+        );
+      } catch (e) {
+        print('Error pre-caching next cover art: $e');
+      }
+    }
+  }
+
   Future<void> playSong(Song song) async {
     if (_api == null) return;
     
@@ -163,14 +215,21 @@ class PlayerProvider extends ChangeNotifier {
     _position = Duration.zero; // Reset position for new song
     _playlist = null; // Clear playlist for single song
     
+    // Cache cover art for the current song
+    await _cacheCoverArt(song);
+    
     // Update MPRIS metadata
     if (Platform.isLinux) {
       MprisService.instance.updateMetadata(song);
     }
     
-    // Update audio handler for Android media session
+    // Update audio handler for Android media session with cached art
     if (Platform.isAndroid && _audioHandler != null) {
-      await _audioHandler!.updateQueueFromSongs([song], startIndex: 0);
+      await _audioHandler!.updateQueueFromSongs(
+        [song], 
+        startIndex: 0,
+        coverArtPaths: [_currentCoverArtPath],
+      );
       // The audio handler will handle playback through the shared player
     } else {
       final url = _api!.getStreamUrl(song.id);
@@ -194,14 +253,47 @@ class PlayerProvider extends ChangeNotifier {
     _isRestoring = false; // Not restoring
     _position = Duration.zero; // Reset position for new song
     
+    // Cache cover art for the current song
+    await _cacheCoverArt(_currentSong!);
+    
+    // Pre-cache cover arts for the queue (async, don't wait)
+    if (_cacheService != null) {
+      Future.microtask(() async {
+        final List<String?> coverArtPaths = [];
+        for (final song in songs) {
+          if (song.coverArt != null) {
+            try {
+              final path = await _cacheService!.getCachedCoverArt(
+                song.coverArt,
+                size: 600,
+              );
+              coverArtPaths.add(path);
+            } catch (e) {
+              coverArtPaths.add(null);
+            }
+          } else {
+            coverArtPaths.add(null);
+          }
+        }
+        // Update handler with all cached paths if still playing same queue
+        if (Platform.isAndroid && _audioHandler != null && _queue == songs) {
+          await _audioHandler!.updateCoverArtPaths(coverArtPaths);
+        }
+      });
+    }
+    
     // Update MPRIS metadata
     if (Platform.isLinux) {
       MprisService.instance.updateMetadata(_currentSong);
     }
     
-    // Update audio handler for Android media session
+    // Update audio handler for Android media session with current cached art
     if (Platform.isAndroid && _audioHandler != null) {
-      await _audioHandler!.updateQueueFromSongs(songs, startIndex: startIndex);
+      await _audioHandler!.updateQueueFromSongs(
+        songs, 
+        startIndex: startIndex,
+        coverArtPaths: [_currentCoverArtPath], // Start with just current song's art
+      );
       // The audio handler will set up the playlist in the shared player
     } else {
       if (_useGaplessPlayback && songs.length > 1) {
@@ -216,6 +308,9 @@ class PlayerProvider extends ChangeNotifier {
     
     // Always use the shared player for playback
     await _audioPlayer.play();
+    
+    // Pre-load next cover art
+    _preloadNextCoverArt();
     
     notifyListeners();
     _savePlayerState();
@@ -251,6 +346,13 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> next() async {
     if (_queue.isEmpty || _api == null) return;
     
+    // For Android, use the audio handler to skip to next
+    if (Platform.isAndroid && _audioHandler != null) {
+      await _audioHandler!.skipToNext();
+      // The handler will update the player and media item
+      return;
+    }
+    
     if (_playlist != null && _useGaplessPlayback) {
       // Gapless mode - just seek to next in playlist
       if (_audioPlayer.hasNext) {
@@ -264,6 +366,9 @@ class PlayerProvider extends ChangeNotifier {
       _position = Duration.zero; // Reset position for new song
       _hasRestoredPosition = true; // Not restoring
       _isRestoring = false;
+      
+      // Cache cover art for the new song
+      await _cacheCoverArt(_currentSong!);
       
       // Update MPRIS metadata
       if (Platform.isLinux) {
@@ -291,6 +396,13 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> previous() async {
     if (_queue.isEmpty || _api == null) return;
     
+    // For Android, use the audio handler to skip to previous
+    if (Platform.isAndroid && _audioHandler != null) {
+      await _audioHandler!.skipToPrevious();
+      // The handler will update the player and media item
+      return;
+    }
+    
     if (_playlist != null && _useGaplessPlayback) {
       // Gapless mode - seek to previous in playlist
       if (_audioPlayer.hasPrevious) {
@@ -304,6 +416,9 @@ class PlayerProvider extends ChangeNotifier {
       _position = Duration.zero; // Reset position for new song
       _hasRestoredPosition = true; // Not restoring
       _isRestoring = false;
+      
+      // Cache cover art for the new song
+      await _cacheCoverArt(_currentSong!);
       
       // Update MPRIS metadata
       if (Platform.isLinux) {

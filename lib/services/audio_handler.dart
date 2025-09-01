@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/song.dart';
@@ -7,6 +8,7 @@ class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   NavidromeApi _api; // Made non-final to allow updates
   List<Song> _queue = [];
+  List<String?> _coverArtPaths = []; // Local paths to cached cover art
   int _currentIndex = 0;
   
   NhacteAudioHandler(this._player, this._api) {
@@ -14,6 +16,7 @@ class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
     _listenForDurationChanges();
     _listenForCurrentSongIndexChanges();
     _listenForSequenceStateChanges();
+    _listenForPositionChanges();
   }
   
   // Method to update the API after initialization
@@ -21,22 +24,42 @@ class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
     _api = api;
   }
   
+  // Method to update cover art paths for the queue
+  Future<void> updateCoverArtPaths(List<String?> paths) async {
+    _coverArtPaths = paths;
+    
+    // Update the current media item with cached art if available
+    if (_currentIndex < _queue.length) {
+      final song = _queue[_currentIndex];
+      final coverArtPath = _currentIndex < _coverArtPaths.length ? 
+          _coverArtPaths[_currentIndex] : null;
+      final mediaItem = _createMediaItem(song, coverArtPath: coverArtPath);
+      this.mediaItem.add(mediaItem);
+      
+      // Also update the queue with the updated media item
+      final updatedQueue = queue.value.toList();
+      if (_currentIndex < updatedQueue.length) {
+        updatedQueue[_currentIndex] = mediaItem;
+        queue.add(updatedQueue);
+      }
+    }
+  }
+  
   void _notifyAudioHandlerAboutPlaybackEvents() {
     _player.playbackEventStream.listen((PlaybackEvent event) {
       final playing = _player.playing;
+      final controls = [
+        MediaControl.skipToPrevious,
+        if (playing) MediaControl.pause else MediaControl.play,
+        MediaControl.skipToNext,
+      ];
+      
       playbackState.add(playbackState.value.copyWith(
-        controls: [
-          MediaControl.skipToPrevious,
-          if (playing) MediaControl.pause else MediaControl.play,
-          MediaControl.stop,
-          MediaControl.skipToNext,
-        ],
+        controls: controls,
         systemActions: const {
           MediaAction.seek,
-          MediaAction.seekBackward,
-          MediaAction.seekForward,
         },
-        androidCompactActionIndices: const [0, 1, 3],
+        androidCompactActionIndices: const [0, 1, 2], // prev, play/pause, next in compact view
         processingState: const {
           ProcessingState.idle: AudioProcessingState.idle,
           ProcessingState.loading: AudioProcessingState.loading,
@@ -81,6 +104,7 @@ class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
     _player.currentIndexStream.listen((index) {
       final playlist = queue.value;
       if (index == null || playlist.isEmpty) return;
+      
       if (_player.shuffleModeEnabled) {
         index = _player.shuffleIndices![index];
       }
@@ -106,13 +130,33 @@ class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
     });
   }
   
-  MediaItem _createMediaItem(Song song) {
-    String? artUri;
-    if (song.coverArt != null) {
-      artUri = _api.getCoverArtUrl(song.coverArt!, size: 600);
+  void _listenForPositionChanges() {
+    // Update position continuously every 200ms while playing
+    _player.positionStream.listen((position) {
+      playbackState.add(playbackState.value.copyWith(
+        updatePosition: position,
+        bufferedPosition: _player.bufferedPosition,
+      ));
+    });
+  }
+  
+  MediaItem _createMediaItem(Song song, {String? coverArtPath}) {
+    Uri? artUri;
+    
+    // For Android notifications, prefer network URLs over local files
+    // as MediaSession may not have access to local files
+    if (song.coverArt != null && _api != null) {
+      final url = _api.getCoverArtUrl(song.coverArt!, size: 600);
+      artUri = Uri.parse(url);
+    } else if (coverArtPath != null) {
+      // Use local file as fallback
+      final file = File(coverArtPath);
+      if (file.existsSync()) {
+        artUri = Uri.file(coverArtPath);
+      }
     }
     
-    return MediaItem(
+    final mediaItem = MediaItem(
       id: song.id,
       title: song.title,
       artist: song.artist ?? 'Unknown Artist',
@@ -120,35 +164,54 @@ class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
       duration: song.duration != null 
           ? Duration(seconds: song.duration!) 
           : null,
-      artUri: artUri != null ? Uri.parse(artUri) : null,
+      artUri: artUri,
     );
+    
+    
+    return mediaItem;
   }
   
-  Future<void> updateQueueFromSongs(List<Song> songs, {int startIndex = 0}) async {
+  Future<void> updateQueueFromSongs(List<Song> songs, {
+    int startIndex = 0,
+    List<String?>? coverArtPaths,
+  }) async {
     _queue = songs;
     _currentIndex = startIndex;
     
-    // Convert songs to MediaItems
-    final mediaItems = songs.map(_createMediaItem).toList();
+    // Store cover art paths if provided
+    if (coverArtPaths != null) {
+      _coverArtPaths = coverArtPaths;
+    } else {
+      _coverArtPaths = List.filled(songs.length, null);
+    }
+    
+    // Convert songs to MediaItems with cached art paths
+    final mediaItems = <MediaItem>[];
+    for (int i = 0; i < songs.length; i++) {
+      final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
+      mediaItems.add(_createMediaItem(songs[i], coverArtPath: coverArtPath));
+    }
     
     // Update the queue
     queue.add(mediaItems);
     
-    // Create audio sources
-    final audioSources = songs.map((song) {
-      final url = _api.getStreamUrl(song.id);
-      return AudioSource.uri(
+    // Create audio sources with proper media items
+    final audioSources = <AudioSource>[];
+    for (int i = 0; i < songs.length; i++) {
+      final url = _api.getStreamUrl(songs[i].id);
+      final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
+      audioSources.add(AudioSource.uri(
         Uri.parse(url),
-        tag: _createMediaItem(song),
-      );
-    }).toList();
+        tag: _createMediaItem(songs[i], coverArtPath: coverArtPath),
+      ));
+    }
     
     // Set the playlist
     final playlist = ConcatenatingAudioSource(children: audioSources);
     await _player.setAudioSource(playlist, initialIndex: startIndex);
     
     // Update the current media item
-    if (songs.isNotEmpty) {
+    if (songs.isNotEmpty && startIndex < mediaItems.length) {
       mediaItem.add(mediaItems[startIndex]);
     }
   }
@@ -191,10 +254,45 @@ class NhacteAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> seek(Duration position) => _player.seek(position);
   
   @override
-  Future<void> skipToNext() => _player.seekToNext();
+  Future<void> skipToNext() async {
+    if (_queue.isEmpty) return;
+    
+    if (_currentIndex < _queue.length - 1) {
+      await _player.seekToNext();
+    } else if (_player.loopMode == LoopMode.all) {
+      // Loop back to beginning if repeat all is enabled
+      await _player.seek(Duration.zero, index: 0);
+    }
+  }
   
   @override
-  Future<void> skipToPrevious() => _player.seekToPrevious();
+  Future<void> skipToPrevious() async {
+    if (_queue.isEmpty) return;
+    
+    if (_currentIndex > 0) {
+      await _player.seekToPrevious();
+    } else if (_player.loopMode == LoopMode.all) {
+      // Loop to end if repeat all is enabled
+      await _player.seek(Duration.zero, index: _queue.length - 1);
+    }
+  }
+  
+  @override
+  Future<void> rewind() async {
+    final newPosition = _player.position - const Duration(seconds: 10);
+    await _player.seek(newPosition < Duration.zero ? Duration.zero : newPosition);
+  }
+  
+  @override
+  Future<void> fastForward() async {
+    final newPosition = _player.position + const Duration(seconds: 10);
+    final duration = _player.duration;
+    if (duration != null && newPosition > duration) {
+      await _player.seek(duration);
+    } else {
+      await _player.seek(newPosition);
+    }
+  }
   
   @override
   Future<void> skipToQueueItem(int index) async {

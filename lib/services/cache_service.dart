@@ -182,20 +182,29 @@ class CacheService {
   
   // Cover art caching
   Future<String?> getCachedCoverArt(String? coverArtId, {int size = 300}) async {
-    if (coverArtId == null) return null;
+    if (coverArtId == null) {
+      print('[CacheService] Cover art ID is null');
+      return null;
+    }
+    
+    print('[CacheService] Getting cached cover art for ID: $coverArtId, size: $size');
     
     // Check if we have a cached local path
     final cachedPath = await DatabaseHelper.getCoverArtLocalPath(coverArtId);
     if (cachedPath != null) {
       final file = File(cachedPath);
       if (await file.exists()) {
+        print('[CacheService] Found cached cover art at: $cachedPath');
         return cachedPath;
+      } else {
+        print('[CacheService] Cached path exists in DB but file not found: $cachedPath');
       }
     }
     
     // Download and cache the cover art
     try {
       final url = api.getCoverArtUrl(coverArtId, size: size);
+      print('[CacheService] Downloading cover art from: $url');
       final response = await http.get(Uri.parse(url));
       
       if (response.statusCode == 200) {
@@ -206,7 +215,11 @@ class CacheService {
           appDir = await getApplicationDocumentsDirectory();
         }
         final coverDir = Directory(path.join(appDir.path, 'covers'));
+        
+        print('[CacheService] Cover directory: ${coverDir.path}');
+        
         if (!await coverDir.exists()) {
+          print('[CacheService] Creating cover directory...');
           await coverDir.create(recursive: true);
         }
         
@@ -214,7 +227,15 @@ class CacheService {
         final filePath = path.join(coverDir.path, fileName);
         final file = File(filePath);
         
+        print('[CacheService] Saving cover art to: $filePath');
         await file.writeAsBytes(response.bodyBytes);
+        
+        // Verify file was written
+        if (await file.exists()) {
+          print('[CacheService] Cover art saved successfully, size: ${response.bodyBytes.length} bytes');
+        } else {
+          print('[CacheService] WARNING: File not found after writing!');
+        }
         
         // Store in database
         await DatabaseHelper.setCoverArtCache(
@@ -225,9 +246,11 @@ class CacheService {
         );
         
         return filePath;
+      } else {
+        print('[CacheService] Failed to download cover art, status: ${response.statusCode}');
       }
     } catch (e) {
-      print('Error caching cover art: $e');
+      print('[CacheService] Error caching cover art: $e');
     }
     
     return null;
