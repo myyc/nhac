@@ -147,6 +147,7 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.all(16),
           child: TextField(
             controller: _searchController,
+            autofocus: true,
             decoration: InputDecoration(
               hintText: 'Search artists, albums, songs...',
               prefixIcon: const Icon(Icons.search),

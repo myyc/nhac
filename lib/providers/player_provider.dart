@@ -10,11 +10,13 @@ import '../services/audio_cache_manager.dart';
 import '../services/mpris_service.dart';
 import '../services/audio_handler.dart';
 import '../services/cache_service.dart';
+import '../services/color_extraction_service.dart';
 import '../main.dart';
 
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _audioPlayer;
   final AudioCacheManager _cacheManager = AudioCacheManager();
+  final ColorExtractionService _colorExtractionService = ColorExtractionService();
   NavidromeApi? _api;
   CacheService? _cacheService;
   Timer? _preloadTimer;
@@ -23,6 +25,7 @@ class PlayerProvider extends ChangeNotifier {
   
   Song? _currentSong;
   String? _currentCoverArtPath; // Local path to cached cover art
+  ExtractedColors? _currentColors; // Colors extracted from current album art
   List<Song> _queue = [];
   int _currentIndex = 0;
   bool _isPlaying = false;
@@ -36,6 +39,7 @@ class PlayerProvider extends ChangeNotifier {
   bool _useGaplessPlayback = false; // Disabled: not supported by media_kit backend
 
   Song? get currentSong => _currentSong;
+  ExtractedColors? get currentColors => _currentColors;
   List<Song> get queue => _queue;
   int get currentIndex => _currentIndex;
   bool get isPlaying => _isPlaying;
@@ -137,6 +141,9 @@ class PlayerProvider extends ChangeNotifier {
         // Cache cover art for the current song
         await _cacheCoverArt(_currentSong!);
         
+        // Extract colors from album art
+        await _extractColorsFromCurrentSong();
+        
         // Update MPRIS metadata
         if (Platform.isLinux) {
           MprisService.instance.updateMetadata(_currentSong!);
@@ -218,6 +225,9 @@ class PlayerProvider extends ChangeNotifier {
     // Cache cover art for the current song
     await _cacheCoverArt(song);
     
+    // Extract colors from album art
+    await _extractColorsFromCurrentSong();
+    
     // Update MPRIS metadata
     if (Platform.isLinux) {
       MprisService.instance.updateMetadata(song);
@@ -255,6 +265,9 @@ class PlayerProvider extends ChangeNotifier {
     
     // Cache cover art for the current song
     await _cacheCoverArt(_currentSong!);
+    
+    // Extract colors from album art
+    await _extractColorsFromCurrentSong();
     
     // Pre-cache cover arts for the queue (async, don't wait)
     if (_cacheService != null) {
@@ -370,6 +383,9 @@ class PlayerProvider extends ChangeNotifier {
       // Cache cover art for the new song
       await _cacheCoverArt(_currentSong!);
       
+      // Extract colors from album art
+      await _extractColorsFromCurrentSong();
+      
       // Update MPRIS metadata
       if (Platform.isLinux) {
         MprisService.instance.updateMetadata(_currentSong);
@@ -419,6 +435,9 @@ class PlayerProvider extends ChangeNotifier {
       
       // Cache cover art for the new song
       await _cacheCoverArt(_currentSong!);
+      
+      // Extract colors from album art
+      await _extractColorsFromCurrentSong();
       
       // Update MPRIS metadata
       if (Platform.isLinux) {
@@ -596,6 +615,9 @@ class PlayerProvider extends ChangeNotifier {
           _currentSong = _queue[actualIndex];
           _currentIndex = actualIndex;
           
+          // Extract colors from album art for the new track
+          _extractColorsFromCurrentSong();
+          
           // Update MPRIS metadata
           if (Platform.isLinux) {
             MprisService.instance.updateMetadata(_currentSong);
@@ -693,6 +715,33 @@ class PlayerProvider extends ChangeNotifier {
       }
     } catch (e) {
       print('[PlayerProvider] Error switching to preloaded player: $e');
+    }
+  }
+
+  /// Extract colors from the current song's album art
+  Future<void> _extractColorsFromCurrentSong() async {
+    if (_currentSong?.coverArt == null || _api == null) {
+      _currentColors = ExtractedColors.defaultColors();
+      notifyListeners();
+      return;
+    }
+
+    try {
+      // Get the cover art URL using the API method
+      final imageUrl = _api!.getCoverArtUrl(_currentSong!.coverArt, size: 400);
+      
+      // Extract colors with caching
+      final cacheKey = 'colors_${_currentSong!.coverArt}_400';
+      _currentColors = await _colorExtractionService.extractColorsFromImage(
+        imageUrl,
+        cacheKey: cacheKey,
+      );
+      
+      notifyListeners();
+    } catch (e) {
+      print('Error extracting colors from album art: $e');
+      _currentColors = ExtractedColors.defaultColors();
+      notifyListeners();
     }
   }
   

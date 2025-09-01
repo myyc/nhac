@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
-import '../providers/player_provider.dart';
 import '../widgets/custom_window_frame.dart';
 import 'home_view.dart';
 import 'search_screen.dart';
@@ -90,46 +89,12 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return CustomWindowFrame(
-        onMenuPressed: (buttonContext) {
-          _showMenu(buttonContext);
-        },
+        showMenuButton: true,
         child: content,
       );
     }
     
-    // For non-desktop platforms, add a regular app bar
-    return AppScaffold(
-      appBar: AppBar(
-        actions: [
-          PopupMenuButton<String>(
-            icon: const Icon(Icons.menu),
-            onSelected: (value) async {
-              if (value == 'logout') {
-                await context.read<AuthProvider>().logout();
-              }
-            },
-            itemBuilder: (context) => [
-              const PopupMenuItem(
-                value: 'logout',
-                child: Text('Logout'),
-              ),
-            ],
-          ),
-        ],
-      ),
-      child: IndexedStack(
-        index: _selectedIndex,
-        children: _screens,
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _selectedIndex,
-        onDestinationSelected: (index) {
-          setState(() {
-            _selectedIndex = index;
-          });
-        },
-        destinations: _destinations,
-      ),
-    );
+    // For mobile platforms, return content without app bar to save screen space
+    return content;
   }
 }

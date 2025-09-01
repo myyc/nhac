@@ -5,9 +5,10 @@ import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
-import '../widgets/custom_title_bar.dart';
 import 'album_detail_screen.dart';
 import 'app_scaffold.dart';
+import '../widgets/custom_window_frame.dart';
+import 'dart:io' show Platform;
 
 class ArtistDetailScreen extends StatefulWidget {
   final Artist artist;
@@ -61,8 +62,8 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     final api = context.read<AuthProvider>().api;
     final cacheProvider = context.read<CacheProvider>();
     
-    return AppScaffold(
-      appBar: CustomTitleBar(
+    final scaffold = AppScaffold(
+      appBar: AppBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
@@ -154,5 +155,13 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                       },
                     ),
     );
+    
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return CustomWindowFrame(
+        child: scaffold,
+      );
+    }
+    
+    return scaffold;
   }
 }

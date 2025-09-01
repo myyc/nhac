@@ -1,14 +1,13 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import '../widgets/custom_window_frame.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/cache_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/auth_provider.dart';
-import '../widgets/custom_title_bar.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
-import 'app_scaffold.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
 
@@ -25,71 +24,133 @@ class NowPlayingScreen extends StatelessWidget {
   Widget build(BuildContext context) {
     final cacheProvider = context.read<CacheProvider>();
     
-    return AppScaffold(
-      showNowPlayingBar: false,
-      appBar: CustomTitleBar(
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
-        title: const Text(''),
-      ),
-      child: Consumer<PlayerProvider>(
-        builder: (context, playerProvider, child) {
-          final song = playerProvider.currentSong;
-          if (song == null) {
-            Navigator.pop(context);
-            return const SizedBox.shrink();
-          }
-          
-          return Padding(
+    return Consumer<PlayerProvider>(
+      builder: (context, playerProvider, child) {
+        final song = playerProvider.currentSong;
+        if (song == null) {
+          Navigator.pop(context);
+          return const SizedBox.shrink();
+        }
+
+        final extractedColors = playerProvider.currentColors;
+        final theme = Theme.of(context);
+        final isDark = theme.brightness == Brightness.dark;
+
+        final scaffold = Scaffold(
+          appBar: AppBar(
+            backgroundColor: Colors.transparent,
+            elevation: 0,
+            leading: IconButton(
+              icon: const Icon(Icons.arrow_back),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+          ),
+          body: Padding(
             padding: const EdgeInsets.all(24.0),
             child: Column(
               children: [
                 Expanded(
                   child: Center(
                     child: Container(
-                      constraints: const BoxConstraints(maxWidth: 400, maxHeight: 400),
+                      constraints: const BoxConstraints(maxWidth: 360, maxHeight: 360),
                       decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(12),
+                        borderRadius: BorderRadius.circular(20),
                         color: Theme.of(context).colorScheme.surfaceVariant,
                         boxShadow: [
                           BoxShadow(
-                            color: Colors.black.withOpacity(0.2),
-                            blurRadius: 20,
-                            offset: const Offset(0, 10),
+                            color: Colors.black.withOpacity(0.15),
+                            blurRadius: 30,
+                            offset: const Offset(0, 15),
+                            spreadRadius: -5,
+                          ),
+                          BoxShadow(
+                            color: Colors.black.withOpacity(0.08),
+                            blurRadius: 10,
+                            offset: const Offset(0, 5),
                           ),
                         ],
                       ),
                       child: song.coverArt != null
                           ? ClipRRect(
-                              borderRadius: BorderRadius.circular(12),
+                              borderRadius: BorderRadius.circular(20),
                               child: CachedNetworkImage(
                                 key: ValueKey('playing_${song.id}_${song.coverArt}'),
                                 imageUrl: cacheProvider.getCoverArtUrl(song.coverArt, size: 800),
                                 cacheKey: 'cover_${song.id}_${song.coverArt}_800',
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) => 
-                                    const Center(child: CircularProgressIndicator()),
-                                errorWidget: (context, url, error) => 
-                                    const Center(child: Icon(Icons.music_note, size: 100)),
+                                placeholder: (context, url) => Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    color: Theme.of(context).colorScheme.surfaceVariant,
+                                  ),
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.music_note,
+                                          size: 60,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                errorWidget: (context, url, error) => Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    color: Theme.of(context).colorScheme.surfaceVariant,
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.music_note,
+                                      size: 80,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                    ),
+                                  ),
+                                ),
                               ),
                             )
-                          : const Center(child: Icon(Icons.music_note, size: 100)),
+                          : Container(
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Theme.of(context).colorScheme.surfaceVariant,
+                              ),
+                              child: Center(
+                                child: Icon(
+                                  Icons.music_note,
+                                  size: 80,
+                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                ),
+                              ),
+                            ),
                     ),
                   ),
                 ),
-                const SizedBox(height: 48),
+                const SizedBox(height: 40),
                 Column(
                   children: [
                     Text(
                       song.title,
-                      style: Theme.of(context).textTheme.headlineSmall,
+                      style: Theme.of(context).textTheme.headlineSmall?.copyWith(
+                        fontWeight: FontWeight.w700,
+                        letterSpacing: -0.5,
+                        height: 1.2,
+                      ),
                       textAlign: TextAlign.center,
                       maxLines: 2,
                       overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 6),
                     MouseRegion(
                       cursor: song.artistId != null ? SystemMouseCursors.click : MouseCursor.defer,
                       child: Material(
@@ -248,7 +309,7 @@ class NowPlayingScreen extends StatelessWidget {
                 const SizedBox(height: 24),
                 
                 // Volume control - only show on desktop
-                if (!Platform.isAndroid && !Platform.isIOS) ...[
+                if (!Platform.isAndroid && !Platform.isIOS)
                   Row(
                     children: [
                       const Icon(Icons.volume_down, size: 20),
@@ -263,13 +324,21 @@ class NowPlayingScreen extends StatelessWidget {
                       const Icon(Icons.volume_up, size: 20),
                     ],
                   ),
+                if (!Platform.isAndroid && !Platform.isIOS)
                   const SizedBox(height: 24),
-                ],
               ],
             ),
+          ),
+        );
+        
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          return CustomWindowFrame(
+            child: scaffold,
           );
-        },
-      ),
+        }
+        
+        return scaffold;
+      },
     );
   }
 }

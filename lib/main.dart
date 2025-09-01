@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -9,12 +10,14 @@ import 'package:just_audio/just_audio.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/cache_provider.dart';
+import 'providers/theme_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/database_helper.dart';
 import 'services/mpris_service.dart';
 import 'services/audio_handler.dart';
 import 'services/navidrome_api.dart';
+import 'theme/app_theme.dart';
 
 late NhacteAudioHandler? audioHandler;
 late AudioPlayer globalAudioPlayer;
@@ -105,26 +108,40 @@ class NhacteApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => AuthProvider()),
           ChangeNotifierProvider(create: (_) => PlayerProvider()),
           ChangeNotifierProvider(create: (_) => CacheProvider()),
+          ChangeNotifierProvider(create: (_) => ThemeProvider()),
         ],
-        child: MaterialApp(
-          title: 'Music Player',
-          debugShowCheckedModeBanner: false,
-          theme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.deepPurple,
-              brightness: Brightness.light,
-            ),
-            useMaterial3: true,
-          ),
-          darkTheme: ThemeData(
-            colorScheme: ColorScheme.fromSeed(
-              seedColor: Colors.deepPurple,
-              brightness: Brightness.dark,
-            ),
-            useMaterial3: true,
-          ),
-          themeMode: ThemeMode.system,
-          home: const AuthWrapper(),
+        child: Consumer2<ThemeProvider, PlayerProvider>(
+          builder: (context, themeProvider, playerProvider, child) {
+            // Connect the providers
+            if (themeProvider.currentColors == null) {
+              themeProvider.setPlayerProvider(playerProvider);
+            }
+            
+            return CallbackShortcuts(
+              bindings: {
+                LogicalKeySet(LogicalKeyboardKey.space): () {
+                  // Only toggle play/pause if no text field is focused
+                  final primaryFocus = FocusManager.instance.primaryFocus;
+                  if (primaryFocus != null && 
+                      primaryFocus.context != null && 
+                      primaryFocus.context!.widget is! EditableText) {
+                    playerProvider.togglePlayPause();
+                  }
+                },
+              },
+              child: Focus(
+                autofocus: true,
+                child: MaterialApp(
+                  title: 'Nhacte',
+                  debugShowCheckedModeBanner: false,
+                  theme: themeProvider.getLightTheme(),
+                  darkTheme: themeProvider.getDarkTheme(),
+                  themeMode: ThemeMode.system,
+                  home: const AuthWrapper(),
+                ),
+              ),
+            );
+          },
         ),
       ),
     );
@@ -156,9 +173,53 @@ class _AuthWrapperState extends State<AuthWrapper> {
     return Consumer<AuthProvider>(
       builder: (context, authProvider, child) {
         if (authProvider.isLoading) {
-          return const Scaffold(
+          // Random loading messages for fun
+          final loadingMessages = [
+            'Loading',
+            'Vibing',
+            'Crunching',
+            'Pondering',
+            'Simmering',
+            'Shimmering',
+            'Grooving',
+            'Jamming',
+            'Tuning',
+            'Spinning',
+            'Brewing',
+            'Syncing',
+            'Harmonizing',
+            'Composing',
+            'Buffering',
+          ];
+          final randomMessage = loadingMessages[
+            DateTime.now().millisecondsSinceEpoch % loadingMessages.length
+          ];
+          
+          return Scaffold(
+            backgroundColor: Theme.of(context).colorScheme.surface,
             body: Center(
-              child: CircularProgressIndicator(),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(
+                    Icons.music_note,
+                    size: 64,
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    randomMessage,
+                    style: Theme.of(context).textTheme.headlineMedium?.copyWith(
+                      fontWeight: FontWeight.w500,
+                      color: Theme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                  const SizedBox(height: 32),
+                  CircularProgressIndicator(
+                    color: Theme.of(context).colorScheme.primary,
+                  ),
+                ],
+              ),
             ),
           );
         }
