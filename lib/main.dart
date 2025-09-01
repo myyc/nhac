@@ -156,6 +156,8 @@ class AuthWrapper extends StatefulWidget {
 }
 
 class _AuthWrapperState extends State<AuthWrapper> {
+  bool _hasInitializedProviders = false;
+  
   @override
   void initState() {
     super.initState();
@@ -225,14 +227,18 @@ class _AuthWrapperState extends State<AuthWrapper> {
         }
 
         if (authProvider.isAuthenticated) {
-          final playerProvider = context.read<PlayerProvider>();
-          final cacheProvider = context.read<CacheProvider>();
-          playerProvider.setApi(authProvider.api!);
-          cacheProvider.initialize(authProvider.api!);
-          
-          // Initialize MPRIS service for Linux
-          if (Platform.isLinux) {
-            MprisService.instance.initialize(playerProvider);
+          // Only initialize providers once to prevent multiple setApi calls
+          if (!_hasInitializedProviders) {
+            _hasInitializedProviders = true;
+            final playerProvider = context.read<PlayerProvider>();
+            final cacheProvider = context.read<CacheProvider>();
+            playerProvider.setApi(authProvider.api!);
+            cacheProvider.initialize(authProvider.api!);
+            
+            // Initialize MPRIS service for Linux
+            if (Platform.isLinux) {
+              MprisService.instance.initialize(playerProvider);
+            }
           }
           
           return const HomeScreen();

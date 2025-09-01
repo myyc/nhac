@@ -119,6 +119,12 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   void setApi(NavidromeApi api) {
+    // Check if the API is already set to the same instance
+    if (_api == api) {
+      print('[PlayerProvider] API already set to same instance, skipping');
+      return;
+    }
+    
     _api = api;
     _cacheService = CacheService(api: api);
     // Update the audio handler with the proper API if on Android
@@ -130,6 +136,12 @@ class PlayerProvider extends ChangeNotifier {
   }
   
   Future<void> _restoreAudioIfNeeded() async {
+    // Check if already restoring to prevent concurrent operations
+    if (_isRestoring) {
+      print('[PlayerProvider] Already restoring, skipping concurrent restore');
+      return;
+    }
+    
     if (_currentSong != null && _api != null && !_hasRestoredPosition) {
       _isRestoring = true;
       print('[PlayerProvider] API set, restoring audio for ${_currentSong!.title}');
