@@ -75,7 +75,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final api = context.read<AuthProvider>().api;
-    final playerProvider = context.read<PlayerProvider>();
     final cacheProvider = context.read<CacheProvider>();
     
     return AppScaffold(
@@ -194,31 +193,35 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                               ],
                             ),
                             const SizedBox(height: 16),
-                            Row(
-                              children: [
-                                FilledButton.icon(
-                                  onPressed: _songs != null && _songs!.isNotEmpty
-                                      ? () {
-                                          playerProvider.setApi(api!);
-                                          playerProvider.playQueue(_songs!);
-                                        }
-                                      : null,
-                                  icon: const Icon(Icons.play_arrow),
-                                  label: const Text('Play'),
-                                ),
-                                const SizedBox(width: 8),
-                                FilledButton.tonalIcon(
-                                  onPressed: _songs != null && _songs!.isNotEmpty
-                                      ? () {
-                                          playerProvider.setApi(api!);
-                                          final shuffled = List<Song>.from(_songs!)..shuffle();
-                                          playerProvider.playQueue(shuffled);
-                                        }
-                                      : null,
-                                  icon: const Icon(Icons.shuffle),
-                                  label: const Text('Shuffle'),
-                                ),
-                              ],
+                            Consumer<PlayerProvider>(
+                              builder: (context, playerProvider, child) {
+                                return Row(
+                                  children: [
+                                    FilledButton.icon(
+                                      onPressed: _songs != null && _songs!.isNotEmpty
+                                          ? () {
+                                              playerProvider.setApi(api!);
+                                              playerProvider.playQueue(_songs!);
+                                            }
+                                          : null,
+                                      icon: const Icon(Icons.play_arrow),
+                                      label: const Text('Play'),
+                                    ),
+                                    const SizedBox(width: 8),
+                                    FilledButton.tonalIcon(
+                                      onPressed: _songs != null && _songs!.isNotEmpty
+                                          ? () {
+                                              playerProvider.setApi(api!);
+                                              final shuffled = List<Song>.from(_songs!)..shuffle();
+                                              playerProvider.playQueue(shuffled);
+                                            }
+                                          : null,
+                                      icon: const Icon(Icons.shuffle),
+                                      label: const Text('Shuffle'),
+                                    ),
+                                  ],
+                                );
+                              },
                             ),
                           ],
                         ),
@@ -226,23 +229,67 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       
                       // Song list
                       if (_songs != null)
-                        ...(_songs!.map((song) => ListTile(
-                          leading: SizedBox(
-                            width: 30,
-                            child: Text(
-                              song.track?.toString() ?? '',
-                              style: Theme.of(context).textTheme.bodyMedium,
-                              textAlign: TextAlign.center,
-                            ),
-                          ),
-                          title: Text(song.title),
-                          subtitle: Text(song.artist ?? 'Unknown Artist'),
-                          trailing: Text(song.formattedDuration),
-                          onTap: () {
-                            playerProvider.setApi(api!);
-                            playerProvider.playQueue(_songs!, startIndex: _songs!.indexOf(song));
+                        Consumer<PlayerProvider>(
+                          builder: (context, playerProvider, child) {
+                            return Column(
+                              children: _songs!.map((song) {
+                                final isCurrentSong = playerProvider.currentSong?.id == song.id;
+                                final isPlaying = isCurrentSong && playerProvider.isPlaying;
+                                
+                                return Container(
+                                  color: isCurrentSong 
+                                      ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                                      : null,
+                                  child: ListTile(
+                                    leading: SizedBox(
+                                      width: 30,
+                                      child: isCurrentSong
+                                          ? Icon(
+                                              isPlaying ? Icons.volume_up : Icons.pause_circle_outline,
+                                              size: 20,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            )
+                                          : Text(
+                                              song.track?.toString() ?? '',
+                                              style: Theme.of(context).textTheme.bodyMedium,
+                                              textAlign: TextAlign.center,
+                                            ),
+                                    ),
+                                    title: Text(
+                                      song.title,
+                                      style: TextStyle(
+                                        color: isCurrentSong 
+                                            ? Theme.of(context).colorScheme.primary 
+                                            : null,
+                                        fontWeight: isCurrentSong ? FontWeight.bold : null,
+                                      ),
+                                    ),
+                                    subtitle: Text(
+                                      song.artist ?? 'Unknown Artist',
+                                      style: TextStyle(
+                                        color: isCurrentSong 
+                                            ? Theme.of(context).colorScheme.primary.withOpacity(0.8)
+                                            : null,
+                                      ),
+                                    ),
+                                    trailing: Text(
+                                      song.formattedDuration,
+                                      style: TextStyle(
+                                        color: isCurrentSong 
+                                            ? Theme.of(context).colorScheme.primary 
+                                            : null,
+                                      ),
+                                    ),
+                                    onTap: () {
+                                      playerProvider.setApi(api!);
+                                      playerProvider.playQueue(_songs!, startIndex: _songs!.indexOf(song));
+                                    },
+                                  ),
+                                );
+                              }).toList(),
+                            );
                           },
-                        ))),
+                        ),
                         
                       const SizedBox(height: 80), // Space for player bar
                     ],
