@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -31,7 +32,7 @@ class NowPlayingScreen extends StatelessWidget {
           icon: const Icon(Icons.arrow_back),
           onPressed: () => Navigator.of(context).pop(),
         ),
-        title: const Text('Now Playing'),
+        title: const Text(''),
       ),
       child: Consumer<PlayerProvider>(
         builder: (context, playerProvider, child) {
@@ -246,22 +247,24 @@ class NowPlayingScreen extends StatelessWidget {
                 ),
                 const SizedBox(height: 24),
                 
-                // Volume control
-                Row(
-                  children: [
-                    const Icon(Icons.volume_down, size: 20),
-                    Expanded(
-                      child: Slider(
-                        value: playerProvider.volume,
-                        onChanged: (value) {
-                          playerProvider.setVolume(value);
-                        },
+                // Volume control - only show on desktop
+                if (!Platform.isAndroid && !Platform.isIOS) ...[
+                  Row(
+                    children: [
+                      const Icon(Icons.volume_down, size: 20),
+                      Expanded(
+                        child: Slider(
+                          value: playerProvider.volume,
+                          onChanged: (value) {
+                            playerProvider.setVolume(value);
+                          },
+                        ),
                       ),
-                    ),
-                    const Icon(Icons.volume_up, size: 20),
-                  ],
-                ),
-                const SizedBox(height: 24),
+                      const Icon(Icons.volume_up, size: 20),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                ],
               ],
             ),
           );

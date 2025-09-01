@@ -72,6 +72,9 @@ dependencies:
   audio_service_mpris: ^0.2.0
   audio_service_platform_interface: ^0.1.1
   
+  # Audio service for media notifications and lock screen controls
+  audio_service: ^0.18.18
+  
 
 dev_dependencies:
   flutter_test:

@@ -8,13 +8,16 @@ import '../models/song.dart';
 import '../services/navidrome_api.dart';
 import '../services/audio_cache_manager.dart';
 import '../services/mpris_service.dart';
+import '../services/audio_handler.dart';
+import '../main.dart';
 
 class PlayerProvider extends ChangeNotifier {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  final AudioPlayer _audioPlayer;
   final AudioCacheManager _cacheManager = AudioCacheManager();
   NavidromeApi? _api;
   Timer? _preloadTimer;
   ConcatenatingAudioSource? _playlist;
+  NhacteAudioHandler? _audioHandler;
   
   Song? _currentSong;
   List<Song> _queue = [];
@@ -40,7 +43,13 @@ class PlayerProvider extends ChangeNotifier {
       ? _api!.getStreamUrl(_currentSong!.id) 
       : null;
   
-  PlayerProvider() {
+  PlayerProvider() : _audioPlayer = globalAudioPlayer {
+    // Use the shared audio player instance from main.dart
+    if (Platform.isAndroid && audioHandler != null) {
+      _audioHandler = audioHandler;
+    } else {
+      _audioHandler = null;
+    }
     _initializePlayer();
     _cacheManager.initialize();
     _loadPersistedState();
@@ -104,6 +113,10 @@ class PlayerProvider extends ChangeNotifier {
 
   void setApi(NavidromeApi api) {
     _api = api;
+    // Update the audio handler with the proper API if on Android
+    if (Platform.isAndroid && _audioHandler != null) {
+      _audioHandler!.updateApi(api);
+    }
     // Now that we have the API, try to restore the audio if we have persisted state
     _restoreAudioIfNeeded();
   }
@@ -155,8 +168,16 @@ class PlayerProvider extends ChangeNotifier {
       MprisService.instance.updateMetadata(song);
     }
     
-    final url = _api!.getStreamUrl(song.id);
-    await _audioPlayer.setUrl(url);
+    // Update audio handler for Android media session
+    if (Platform.isAndroid && _audioHandler != null) {
+      await _audioHandler!.updateQueueFromSongs([song], startIndex: 0);
+      // The audio handler will handle playback through the shared player
+    } else {
+      final url = _api!.getStreamUrl(song.id);
+      await _audioPlayer.setUrl(url);
+    }
+    
+    // Always use the shared player for playback
     await _audioPlayer.play();
     
     notifyListeners();
@@ -178,15 +199,22 @@ class PlayerProvider extends ChangeNotifier {
       MprisService.instance.updateMetadata(_currentSong);
     }
     
-    if (_useGaplessPlayback && songs.length > 1) {
-      // Use gapless playback for queues with multiple songs
-      await _setupGaplessPlayback(startIndex);
+    // Update audio handler for Android media session
+    if (Platform.isAndroid && _audioHandler != null) {
+      await _audioHandler!.updateQueueFromSongs(songs, startIndex: startIndex);
+      // The audio handler will set up the playlist in the shared player
     } else {
-      // Single song or gapless disabled
-      final url = _api!.getStreamUrl(_currentSong!.id);
-      await _audioPlayer.setUrl(url);
+      if (_useGaplessPlayback && songs.length > 1) {
+        // Use gapless playback for queues with multiple songs
+        await _setupGaplessPlayback(startIndex);
+      } else {
+        // Single song or gapless disabled
+        final url = _api!.getStreamUrl(_currentSong!.id);
+        await _audioPlayer.setUrl(url);
+      }
     }
     
+    // Always use the shared player for playback
     await _audioPlayer.play();
     
     notifyListeners();

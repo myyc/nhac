@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:window_manager/window_manager.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
+import 'package:audio_service/audio_service.dart';
+import 'package:just_audio/just_audio.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/cache_provider.dart';
@@ -11,6 +13,11 @@ import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/database_helper.dart';
 import 'services/mpris_service.dart';
+import 'services/audio_handler.dart';
+import 'services/navidrome_api.dart';
+
+late NhacteAudioHandler? audioHandler;
+late AudioPlayer globalAudioPlayer;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,6 +30,33 @@ void main() async {
     await DatabaseHelper.database;
   } catch (e) {
     print('Warning: Could not initialize database: $e');
+  }
+  
+  // Create a single AudioPlayer instance to be shared
+  globalAudioPlayer = AudioPlayer();
+  
+  // Initialize audio service for Android
+  if (Platform.isAndroid) {
+    // Create a dummy API instance that will be replaced later
+    final dummyApi = NavidromeApi(
+      baseUrl: 'http://localhost',
+      username: '',
+      password: '',
+    );
+    audioHandler = await AudioService.init(
+      builder: () => NhacteAudioHandler(
+        globalAudioPlayer, // Use the shared player instance
+        dummyApi, // This will be properly set later in PlayerProvider
+      ),
+      config: const AudioServiceConfig(
+        androidNotificationChannelId: 'dev.myyc.nhacte.channel.audio',
+        androidNotificationChannelName: 'Music playback',
+        androidNotificationOngoing: false,
+        androidStopForegroundOnPause: false, // Keep service alive during pause
+      ),
+    ) as NhacteAudioHandler;
+  } else {
+    audioHandler = null;
   }
   
   // Initialize window manager for desktop platforms
