@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io' show Platform;
@@ -12,7 +13,16 @@ import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  final VoidCallback? onNavigateToHome;
+  final VoidCallback? onClose;
+  final String? initialQuery;
+  
+  const SearchScreen({
+    super.key, 
+    this.onNavigateToHome,
+    this.onClose,
+    this.initialQuery,
+  });
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -20,6 +30,7 @@ class SearchScreen extends StatefulWidget {
 
 class _SearchScreenState extends State<SearchScreen> {
   final _searchController = TextEditingController();
+  final _searchFocusNode = FocusNode();
   List<Artist>? _artists;
   List<Album>? _albums;
   List<Song>? _songs;
@@ -27,8 +38,31 @@ class _SearchScreenState extends State<SearchScreen> {
   String? _error;
 
   @override
+  void initState() {
+    super.initState();
+    if (widget.initialQuery != null) {
+      _searchController.text = widget.initialQuery!;
+      // Move cursor to end of text
+      _searchController.selection = TextSelection.fromPosition(
+        TextPosition(offset: _searchController.text.length),
+      );
+      // Trigger search after a short delay to let the UI build
+      Future.delayed(const Duration(milliseconds: 100), () {
+        _search(widget.initialQuery!);
+        // Request focus after the initial search
+        _searchFocusNode.requestFocus();
+      });
+    }
+    // Request focus on mount
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _searchFocusNode.requestFocus();
+    });
+  }
+
+  @override
   void dispose() {
     _searchController.dispose();
+    _searchFocusNode.dispose();
     super.dispose();
   }
 
@@ -146,10 +180,20 @@ class _SearchScreenState extends State<SearchScreen> {
       padding: const EdgeInsets.all(16),
       child: TextField(
         controller: _searchController,
+        focusNode: _searchFocusNode,
         autofocus: true,
         decoration: InputDecoration(
           hintText: 'Search artists, albums, songs...',
           prefixIcon: const Icon(Icons.search),
+          suffixIcon: _searchController.text.isNotEmpty
+              ? IconButton(
+                  icon: const Icon(Icons.clear),
+                  onPressed: () {
+                    _searchController.clear();
+                    _search('');
+                  },
+                )
+              : null,
           border: OutlineInputBorder(
             borderRadius: BorderRadius.circular(28),
           ),
@@ -161,7 +205,7 @@ class _SearchScreenState extends State<SearchScreen> {
       ),
     );
     
-    return Column(
+    Widget content = Column(
       children: [
         // Search bar - wrap with SafeArea on mobile
         if (Platform.isAndroid || Platform.isIOS)
@@ -298,5 +342,40 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
       ],
     );
+    
+    // Wrap in Scaffold with app bar for navigation
+    Widget scaffold = Scaffold(
+      appBar: AppBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () {
+            Navigator.of(context).pop();
+            widget.onClose?.call();
+          },
+        ),
+        title: const Text('Search'),
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+      ),
+      body: content,
+    );
+    
+    // For desktop, add ESC key handling
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      return RawKeyboardListener(
+        focusNode: FocusNode(),
+        autofocus: true,
+        onKey: (event) {
+          if (event is RawKeyDownEvent && 
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            Navigator.of(context).pop();
+            widget.onClose?.call();
+          }
+        },
+        child: scaffold,
+      );
+    }
+    
+    return scaffold;
   }
 }

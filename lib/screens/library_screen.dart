@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io' show Platform;
@@ -8,22 +9,44 @@ import '../models/album.dart';
 import 'album_detail_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
-  const LibraryScreen({super.key});
+  final VoidCallback? onNavigateToHome;
+  final VoidCallback? onOpenSearch;
+  
+  const LibraryScreen({
+    super.key, 
+    this.onNavigateToHome,
+    this.onOpenSearch,
+  });
 
   @override
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends State<LibraryScreen> {
+class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProviderStateMixin {
   Map<String, List<Album>>? _albumsByArtist;
   List<String>? _sortedArtists;
   bool _isLoading = true;
   String? _error;
+  
+  // Pull to search animation
+  late AnimationController _pullController;
+  double _dragOffset = 0.0;
+  bool _isSearchTriggered = false;
 
   @override
   void initState() {
     super.initState();
+    _pullController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
     _loadAlbums();
+  }
+  
+  @override
+  void dispose() {
+    _pullController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAlbums({bool forceRefresh = false}) async {
@@ -167,19 +190,125 @@ class _LibraryScreenState extends State<LibraryScreen> {
         ? MediaQuery.of(context).padding.top + 16 
         : 16.0;
     
-    return RefreshIndicator(
-      onRefresh: () => _loadAlbums(forceRefresh: true),
-      child: GridView.builder(
-        padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
-        gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
-          maxCrossAxisExtent: 200,
-          childAspectRatio: 0.8,
-          crossAxisSpacing: 16,
-          mainAxisSpacing: 16,
-        ),
-        itemCount: allAlbums.length,
-        itemBuilder: (context, index) => _buildAlbumCard(allAlbums[index]),
+    Widget content = GridView.builder(
+      padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
+      gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+        maxCrossAxisExtent: 200,
+        childAspectRatio: 0.8,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
       ),
+      itemCount: allAlbums.length,
+      itemBuilder: (context, index) => _buildAlbumCard(allAlbums[index]),
     );
+    
+    // On mobile, add pull-to-search with elastic animation
+    if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
+      content = NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is OverscrollNotification) {
+            if (notification.overscroll < 0) {
+              setState(() {
+                _dragOffset = (_dragOffset - notification.overscroll).clamp(0.0, 150.0);
+              });
+              
+              // Trigger search at threshold
+              if (_dragOffset > 100 && !_isSearchTriggered) {
+                _isSearchTriggered = true;
+                // Haptic feedback
+                HapticFeedback.mediumImpact();
+                widget.onOpenSearch!();
+              }
+            }
+          } else if (notification is ScrollEndNotification) {
+            // Animate spring back on scroll end
+            if (_dragOffset > 0) {
+              _pullController.animateTo(0.0).then((_) {
+                if (mounted) {
+                  setState(() {
+                    _dragOffset = 0.0;
+                    _isSearchTriggered = false;
+                  });
+                }
+              });
+            }
+          }
+          return false;
+        },
+        child: Stack(
+          children: [
+            // Search indicator that appears when pulling
+            if (_dragOffset > 0)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: _dragOffset,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedRotation(
+                          duration: const Duration(milliseconds: 200),
+                          turns: _dragOffset / 100 * 0.5,
+                          child: Icon(
+                            Icons.search,
+                            size: 32,
+                            color: _dragOffset > 100 
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _dragOffset > 100 ? 'Release to search' : 'Pull to search',
+                          style: TextStyle(
+                            color: _dragOffset > 100 
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            // Main content with transform
+            AnimatedBuilder(
+              animation: _pullController,
+              builder: (context, child) {
+                final animatedOffset = _dragOffset * (1 - _pullController.value);
+                return Transform.translate(
+                  offset: Offset(0, animatedOffset * 0.8),
+                  child: child,
+                );
+              },
+              child: content,
+            ),
+          ],
+        ),
+      );
+    }
+    
+    // For Android, wrap with WillPopScope to intercept back gesture
+    if (Platform.isAndroid && widget.onNavigateToHome != null) {
+      return WillPopScope(
+        onWillPop: () async {
+          // Navigate to home instead of popping
+          widget.onNavigateToHome!();
+          return false; // Prevent default back behavior
+        },
+        child: content,
+      );
+    }
+    
+    return content;
   }
 }

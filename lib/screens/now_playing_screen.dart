@@ -1,5 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../widgets/custom_window_frame.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -350,9 +351,20 @@ class NowPlayingScreen extends StatelessWidget {
           ),
         );
         
+        // Add ESC key handling for desktop
         if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-          return CustomWindowFrame(
-            child: scaffold,
+          return RawKeyboardListener(
+            focusNode: FocusNode(),
+            autofocus: true,
+            onKey: (event) {
+              if (event is RawKeyDownEvent && 
+                  event.logicalKey == LogicalKeyboardKey.escape) {
+                Navigator.of(context).pop();
+              }
+            },
+            child: CustomWindowFrame(
+              child: scaffold,
+            ),
           );
         }
         

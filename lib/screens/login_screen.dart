@@ -165,6 +165,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                 prefixIcon: Icon(Icons.dns_outlined),
                               ),
                               keyboardType: TextInputType.url,
+                              textInputAction: TextInputAction.next,
                               autocorrect: false,
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
@@ -174,34 +175,45 @@ class _LoginScreenState extends State<LoginScreen> {
                               },
                             ),
                             const SizedBox(height: 20),
-                            TextFormField(
-                              controller: _usernameController,
-                              decoration: const InputDecoration(
-                                labelText: 'Username',
-                                prefixIcon: Icon(Icons.person_outline),
+                            AutofillGroup(
+                              child: Column(
+                                children: [
+                                  TextFormField(
+                                    controller: _usernameController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Username',
+                                      prefixIcon: Icon(Icons.person_outline),
+                                    ),
+                                    autofillHints: const [AutofillHints.username],
+                                    textInputAction: TextInputAction.next,
+                                    autocorrect: false,
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter username';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                  const SizedBox(height: 20),
+                                  TextFormField(
+                                    controller: _passwordController,
+                                    decoration: const InputDecoration(
+                                      labelText: 'Password',
+                                      prefixIcon: Icon(Icons.lock_outline),
+                                    ),
+                                    autofillHints: const [AutofillHints.password],
+                                    textInputAction: TextInputAction.done,
+                                    obscureText: true,
+                                    onFieldSubmitted: (_) => _login(),
+                                    validator: (value) {
+                                      if (value == null || value.isEmpty) {
+                                        return 'Please enter password';
+                                      }
+                                      return null;
+                                    },
+                                  ),
+                                ],
                               ),
-                              autocorrect: false,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter username';
-                                }
-                                return null;
-                              },
-                            ),
-                            const SizedBox(height: 20),
-                            TextFormField(
-                              controller: _passwordController,
-                              decoration: const InputDecoration(
-                                labelText: 'Password',
-                                prefixIcon: Icon(Icons.lock_outline),
-                              ),
-                              obscureText: true,
-                              validator: (value) {
-                                if (value == null || value.isEmpty) {
-                                  return 'Please enter password';
-                                }
-                                return null;
-                              },
                             ),
                             const SizedBox(height: 32),
                             Consumer<AuthProvider>(

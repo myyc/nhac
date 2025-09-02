@@ -1,28 +1,47 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/album.dart';
 import 'album_detail_screen.dart';
 
 class HomeView extends StatefulWidget {
-  const HomeView({super.key});
+  final VoidCallback? onOpenSearch;
+  
+  const HomeView({super.key, this.onOpenSearch});
 
   @override
   State<HomeView> createState() => _HomeViewState();
 }
 
-class _HomeViewState extends State<HomeView> {
+class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin {
   List<Album>? _recentlyAdded;
   List<Album>? _mostPlayed;
   List<Album>? _random;
   bool _isLoading = true;
+  
+  // Pull to search animation
+  late AnimationController _pullController;
+  double _dragOffset = 0.0;
+  bool _isSearchTriggered = false;
 
   @override
   void initState() {
     super.initState();
+    _pullController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
     _loadData();
+  }
+  
+  @override
+  void dispose() {
+    _pullController.dispose();
+    super.dispose();
   }
 
   Future<void> _loadData() async {
@@ -266,9 +285,7 @@ class _HomeViewState extends State<HomeView> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadData,
-      child: ListView(
+    Widget listView = ListView(
         children: [
           const SizedBox(height: 16),
           
@@ -305,8 +322,104 @@ class _HomeViewState extends State<HomeView> {
           
           const SizedBox(height: 80), // Space for player bar
         ],
-      ),
-    );
+      );
+    
+    // On mobile, add pull-to-search with elastic animation
+    if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
+      return NotificationListener<ScrollNotification>(
+        onNotification: (notification) {
+          if (notification is OverscrollNotification) {
+            if (notification.overscroll < 0) {
+              setState(() {
+                _dragOffset = (_dragOffset - notification.overscroll).clamp(0.0, 150.0);
+              });
+              
+              // Trigger search at threshold
+              if (_dragOffset > 100 && !_isSearchTriggered) {
+                _isSearchTriggered = true;
+                // Haptic feedback
+                HapticFeedback.mediumImpact();
+                widget.onOpenSearch!();
+              }
+            }
+          } else if (notification is ScrollEndNotification) {
+            // Animate spring back on scroll end
+            if (_dragOffset > 0) {
+              _pullController.animateTo(0.0).then((_) {
+                if (mounted) {
+                  setState(() {
+                    _dragOffset = 0.0;
+                    _isSearchTriggered = false;
+                  });
+                }
+              });
+            }
+          }
+          return false;
+        },
+        child: Stack(
+          children: [
+            // Search indicator that appears when pulling
+            if (_dragOffset > 0)
+              Positioned(
+                top: 0,
+                left: 0,
+                right: 0,
+                child: Container(
+                  height: _dragOffset,
+                  alignment: Alignment.center,
+                  decoration: BoxDecoration(
+                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                  ),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 200),
+                    child: Column(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        AnimatedRotation(
+                          duration: const Duration(milliseconds: 200),
+                          turns: _dragOffset / 100 * 0.5,
+                          child: Icon(
+                            Icons.search,
+                            size: 32,
+                            color: _dragOffset > 100 
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                          ),
+                        ),
+                        const SizedBox(height: 8),
+                        Text(
+                          _dragOffset > 100 ? 'Release to search' : 'Pull to search',
+                          style: TextStyle(
+                            color: _dragOffset > 100 
+                              ? Theme.of(context).colorScheme.primary
+                              : Theme.of(context).colorScheme.onSurfaceVariant,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+            // Main content with transform
+            AnimatedBuilder(
+              animation: _pullController,
+              builder: (context, child) {
+                final animatedOffset = _dragOffset * (1 - _pullController.value);
+                return Transform.translate(
+                  offset: Offset(0, animatedOffset * 0.8),
+                  child: child,
+                );
+              },
+              child: listView,
+            ),
+          ],
+        ),
+      );
+    }
+    
+    return listView;
   }
 
   String _getGreeting() {
