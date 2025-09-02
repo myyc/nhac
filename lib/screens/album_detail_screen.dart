@@ -1,13 +1,14 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/album.dart';
 import '../models/song.dart';
 import '../models/artist.dart';
+import '../widgets/cached_cover_image.dart';
 import 'artist_detail_screen.dart';
 import '../widgets/custom_window_frame.dart';
 import '../widgets/now_playing_bar.dart';
@@ -34,8 +35,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Future<void> _loadAlbumDetails() async {
-    final api = context.read<AuthProvider>().api;
-    if (api == null) return;
+    final cacheProvider = context.read<CacheProvider>();
 
     setState(() {
       _isLoading = true;
@@ -43,10 +43,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     });
 
     try {
-      final result = await api.getAlbum(widget.album.id);
+      final songs = await cacheProvider.getSongsByAlbum(widget.album.id);
       if (mounted) {
         setState(() {
-          _songs = result['songs'];
+          _songs = songs;
           _isLoading = false;
         });
       }
@@ -120,11 +120,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                             ? Stack(
                                 fit: StackFit.expand,
                                 children: [
-                                  CachedNetworkImage(
+                                  CachedCoverImage(
                                     key: ValueKey('album_${widget.album.id}_${widget.album.coverArt}'),
-                                    imageUrl: cacheProvider.getCoverArtUrl(widget.album.coverArt, size: 600),
-                                    cacheKey: 'cover_${widget.album.id}_${widget.album.coverArt}_600',
-                                    fit: BoxFit.cover,
+                                    coverArtId: widget.album.coverArt,
+                                    size: 600,
                                   ),
                                   Container(
                                     decoration: BoxDecoration(
@@ -199,37 +198,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                   ),
                               ],
                             ),
-                            const SizedBox(height: 16),
-                            Consumer<PlayerProvider>(
-                              builder: (context, playerProvider, child) {
-                                return Row(
-                                  children: [
-                                    FilledButton.icon(
-                                      onPressed: _songs != null && _songs!.isNotEmpty
-                                          ? () {
-                                              playerProvider.setApi(api!);
-                                              playerProvider.playQueue(_songs!);
-                                            }
-                                          : null,
-                                      icon: const Icon(Icons.play_arrow),
-                                      label: const Text('Play'),
-                                    ),
-                                    const SizedBox(width: 8),
-                                    FilledButton.tonalIcon(
-                                      onPressed: _songs != null && _songs!.isNotEmpty
-                                          ? () {
-                                              playerProvider.setApi(api!);
-                                              final shuffled = List<Song>.from(_songs!)..shuffle();
-                                              playerProvider.playQueue(shuffled);
-                                            }
-                                          : null,
-                                      icon: const Icon(Icons.shuffle),
-                                      label: const Text('Shuffle'),
-                                    ),
-                                  ],
-                                );
-                              },
-                            ),
                           ],
                         ),
                       ),
@@ -238,63 +206,136 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       if (_songs != null)
                         Consumer<PlayerProvider>(
                           builder: (context, playerProvider, child) {
-                            return Column(
-                              children: _songs!.map((song) {
+                            // Group songs by disc number
+                            final Map<int, List<Song>> songsByDisc = {};
+                            int maxDiscNumber = 1;
+                            for (final song in _songs!) {
+                              final discNumber = song.discNumber ?? 1;
+                              if (discNumber > maxDiscNumber) {
+                                maxDiscNumber = discNumber;
+                              }
+                              songsByDisc.putIfAbsent(discNumber, () => []).add(song);
+                            }
+                            
+                            // Sort disc numbers
+                            final sortedDiscNumbers = songsByDisc.keys.toList()..sort();
+                            // Show disc headers if we have multiple discs OR if any disc number is > 1
+                            final hasMultipleDiscs = sortedDiscNumbers.length > 1 || maxDiscNumber > 1;
+                            
+                            // Build widgets for each disc
+                            final List<Widget> widgets = [];
+                            
+                            for (final discNumber in sortedDiscNumbers) {
+                              final discSongs = songsByDisc[discNumber]!;
+                              
+                              // Sort songs within each disc by track number
+                              discSongs.sort((a, b) {
+                                final trackA = a.track ?? 0;
+                                final trackB = b.track ?? 0;
+                                return trackA.compareTo(trackB);
+                              });
+                              
+                              // Add disc header if there are multiple discs
+                              if (hasMultipleDiscs) {
+                                // Get disc subtitle from first song of this disc
+                                final discSubtitle = discSongs.first.discSubtitle;
+                                
+                                widgets.add(
+                                  Container(
+                                    padding: const EdgeInsets.fromLTRB(16, 24, 16, 8),
+                                    child: Row(
+                                      children: [
+                                        Text(
+                                          'Disc $discNumber',
+                                          style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                            fontWeight: FontWeight.bold,
+                                          ),
+                                        ),
+                                        if (discSubtitle != null && discSubtitle.isNotEmpty) ...[
+                                          Text(
+                                            ': ',
+                                            style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                              fontWeight: FontWeight.bold,
+                                            ),
+                                          ),
+                                          Expanded(
+                                            child: Text(
+                                              discSubtitle,
+                                              style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                                                color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
+                                      ],
+                                    ),
+                                  ),
+                                );
+                              }
+                              
+                              // Add songs for this disc
+                              for (final song in discSongs) {
                                 final isCurrentSong = playerProvider.currentSong?.id == song.id;
                                 final isPlaying = isCurrentSong && playerProvider.isPlaying;
                                 
-                                return Container(
-                                  color: isCurrentSong 
-                                      ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
-                                      : null,
-                                  child: ListTile(
-                                    leading: SizedBox(
-                                      width: 30,
-                                      child: isCurrentSong
-                                          ? Icon(
-                                              isPlaying ? Icons.volume_up : Icons.pause_circle_outline,
-                                              size: 20,
-                                              color: Theme.of(context).colorScheme.primary,
-                                            )
-                                          : Text(
-                                              song.track?.toString() ?? '',
-                                              style: Theme.of(context).textTheme.bodyMedium,
-                                              textAlign: TextAlign.center,
-                                            ),
-                                    ),
-                                    title: Text(
-                                      song.title,
-                                      style: TextStyle(
-                                        color: isCurrentSong 
-                                            ? Theme.of(context).colorScheme.primary 
-                                            : null,
-                                        fontWeight: isCurrentSong ? FontWeight.bold : null,
+                                widgets.add(
+                                  Container(
+                                    color: isCurrentSong 
+                                        ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
+                                        : null,
+                                    child: ListTile(
+                                      leading: SizedBox(
+                                        width: 30,
+                                        child: isCurrentSong
+                                            ? Icon(
+                                                isPlaying ? Icons.volume_up : Icons.pause_circle_outline,
+                                                size: 20,
+                                                color: Theme.of(context).colorScheme.primary,
+                                              )
+                                            : Text(
+                                                song.track?.toString() ?? '',
+                                                style: Theme.of(context).textTheme.bodyMedium,
+                                                textAlign: TextAlign.center,
+                                              ),
                                       ),
-                                    ),
-                                    subtitle: Text(
-                                      song.artist ?? 'Unknown Artist',
-                                      style: TextStyle(
-                                        color: isCurrentSong 
-                                            ? Theme.of(context).colorScheme.primary.withOpacity(0.8)
-                                            : null,
+                                      title: Text(
+                                        song.title,
+                                        style: TextStyle(
+                                          color: isCurrentSong 
+                                              ? Theme.of(context).colorScheme.primary 
+                                              : null,
+                                          fontWeight: isCurrentSong ? FontWeight.bold : null,
+                                        ),
                                       ),
-                                    ),
-                                    trailing: Text(
-                                      song.formattedDuration,
-                                      style: TextStyle(
-                                        color: isCurrentSong 
-                                            ? Theme.of(context).colorScheme.primary 
-                                            : null,
+                                      subtitle: Text(
+                                        song.artist ?? 'Unknown Artist',
+                                        style: TextStyle(
+                                          color: isCurrentSong 
+                                              ? Theme.of(context).colorScheme.primary.withOpacity(0.8)
+                                              : null,
+                                        ),
                                       ),
+                                      trailing: Text(
+                                        song.formattedDuration,
+                                        style: TextStyle(
+                                          color: isCurrentSong 
+                                              ? Theme.of(context).colorScheme.primary 
+                                              : null,
+                                        ),
+                                      ),
+                                      onTap: () {
+                                        final networkProvider = context.read<NetworkProvider>();
+                                        playerProvider.setApi(api!, networkProvider: networkProvider);
+                                        playerProvider.playQueue(_songs!, startIndex: _songs!.indexOf(song));
+                                      },
                                     ),
-                                    onTap: () {
-                                      playerProvider.setApi(api!);
-                                      playerProvider.playQueue(_songs!, startIndex: _songs!.indexOf(song));
-                                    },
                                   ),
                                 );
-                              }).toList(),
-                            );
+                              }
+                            }
+                            
+                            return Column(children: widgets);
                           },
                         ),
                         

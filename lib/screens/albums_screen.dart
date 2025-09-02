@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
+import '../providers/cache_provider.dart';
 import '../models/album.dart';
+import '../widgets/cached_cover_image.dart';
 import 'album_detail_screen.dart';
 
 class AlbumsScreen extends StatefulWidget {
@@ -24,8 +25,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
   }
 
   Future<void> _loadAlbums() async {
-    final api = context.read<AuthProvider>().api;
-    if (api == null) return;
+    final cacheProvider = context.read<CacheProvider>();
 
     setState(() {
       _isLoading = true;
@@ -33,7 +33,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     });
 
     try {
-      final albums = await api.getAlbumList2(type: 'alphabeticalByName', size: 500);
+      final albums = await cacheProvider.getAlbums();
       if (mounted) {
         setState(() {
           _albums = albums;
@@ -53,6 +53,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
   @override
   Widget build(BuildContext context) {
     final api = context.read<AuthProvider>().api;
+    final cacheProvider = context.read<CacheProvider>();
     
     if (_isLoading) {
       return const Center(child: CircularProgressIndicator());
@@ -112,24 +113,14 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
                       borderRadius: BorderRadius.circular(8),
                       color: Theme.of(context).colorScheme.surfaceVariant,
                     ),
-                    child: album.coverArt != null && api != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: CachedNetworkImage(
-                              imageUrl: api.getCoverArtUrl(album.coverArt),
-                              httpHeaders: const {
-                                'User-Agent': 'nhac/1.0.0',
-                              },
-                              fit: BoxFit.cover,
-                              width: double.infinity,
-                              height: double.infinity,
-                              placeholder: (context, url) => 
-                                  const Center(child: CircularProgressIndicator()),
-                              errorWidget: (context, url, error) => 
-                                  const Center(child: Icon(Icons.album, size: 48)),
-                            ),
-                          )
-                        : const Center(child: Icon(Icons.album, size: 48)),
+                    child: CachedCoverImage(
+                      coverArtId: album.coverArt,
+                      borderRadius: BorderRadius.circular(8),
+                      width: double.infinity,
+                      height: double.infinity,
+                      placeholder: const Center(child: CircularProgressIndicator()),
+                      errorWidget: const Center(child: Icon(Icons.album, size: 48)),
+                    ),
                   ),
                 ),
                 const SizedBox(height: 8),

@@ -10,7 +10,7 @@ import '../models/song.dart';
 class DatabaseHelper {
   static Database? _database;
   static const String _databaseName = 'nhac_cache.db';
-  static const int _databaseVersion = 1;
+  static const int _databaseVersion = 3;
 
   static Future<Database> get database async {
     if (_database != null) return _database!;
@@ -43,7 +43,37 @@ class DatabaseHelper {
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
     );
+  }
+
+  static Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
+    if (oldVersion < 2) {
+      // Add audio_cache table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS audio_cache (
+          id TEXT PRIMARY KEY,
+          song_id TEXT NOT NULL,
+          format TEXT NOT NULL,
+          bitrate INTEGER,
+          file_path TEXT NOT NULL,
+          file_size INTEGER NOT NULL,
+          last_played INTEGER,
+          created_at INTEGER NOT NULL,
+          FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+        )
+      ''');
+      
+      // Add index for faster lookups
+      await db.execute('CREATE INDEX idx_audio_cache_song_id ON audio_cache(song_id)');
+      await db.execute('CREATE INDEX idx_audio_cache_last_played ON audio_cache(last_played)');
+    }
+    
+    if (oldVersion < 3) {
+      // Add disc fields to songs table
+      await db.execute('ALTER TABLE songs ADD COLUMN discNumber INTEGER');
+      await db.execute('ALTER TABLE songs ADD COLUMN discSubtitle TEXT');
+    }
   }
 
   static Future<void> _onCreate(Database db, int version) async {
@@ -80,6 +110,8 @@ class DatabaseHelper {
         artistId TEXT,
         duration INTEGER,
         track INTEGER,
+        discNumber INTEGER,
+        discSubtitle TEXT,
         coverArt TEXT,
         lastSync INTEGER NOT NULL
       )
@@ -102,6 +134,25 @@ class DatabaseHelper {
         lastUpdated INTEGER NOT NULL
       )
     ''');
+    
+    // Audio cache table for storing downloaded audio files
+    await db.execute('''
+      CREATE TABLE audio_cache (
+        id TEXT PRIMARY KEY,
+        song_id TEXT NOT NULL,
+        format TEXT NOT NULL,
+        bitrate INTEGER,
+        file_path TEXT NOT NULL,
+        file_size INTEGER NOT NULL,
+        last_played INTEGER,
+        created_at INTEGER NOT NULL,
+        FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+      )
+    ''');
+    
+    // Add indexes for performance
+    await db.execute('CREATE INDEX idx_audio_cache_song_id ON audio_cache(song_id)');
+    await db.execute('CREATE INDEX idx_audio_cache_last_played ON audio_cache(last_played)');
   }
 
   // Artist operations
@@ -164,6 +215,12 @@ class DatabaseHelper {
     await batch.commit(noResult: true);
   }
 
+  static Future<int> getAlbumCount() async {
+    final db = await database;
+    final result = await db.rawQuery('SELECT COUNT(*) as count FROM albums');
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+  
   static Future<List<Album>> getAlbums() async {
     final db = await database;
     final maps = await db.query('albums', orderBy: 'artist, name');
@@ -219,6 +276,8 @@ class DatabaseHelper {
           'artistId': song.artistId,
           'duration': song.duration,
           'track': song.track,
+          'discNumber': song.discNumber,
+          'discSubtitle': song.discSubtitle,
           'coverArt': song.coverArt,
           'lastSync': now,
         },
@@ -235,7 +294,7 @@ class DatabaseHelper {
       'songs',
       where: 'albumId = ?',
       whereArgs: [albumId],
-      orderBy: 'track, title',
+      orderBy: 'discNumber, track, title',
     );
     
     return maps.map((map) => Song(
@@ -247,6 +306,8 @@ class DatabaseHelper {
       artistId: map['artistId'] as String?,
       duration: map['duration'] as int?,
       track: map['track'] as int?,
+      discNumber: map['discNumber'] as int?,
+      discSubtitle: map['discSubtitle'] as String?,
       coverArt: map['coverArt'] as String?,
     )).toList();
   }
@@ -369,5 +430,155 @@ class DatabaseHelper {
     await db.delete('songs');
     await db.delete('cover_art_cache');
     await db.delete('sync_metadata');
+    await db.delete('audio_cache');
+  }
+  
+  // Audio cache operations
+  static Future<void> insertAudioCache({
+    required String songId,
+    required String format,
+    required String filePath,
+    required int fileSize,
+    int? bitrate,
+  }) async {
+    final db = await database;
+    final id = '${songId}_$format';
+    
+    await db.insert(
+      'audio_cache',
+      {
+        'id': id,
+        'song_id': songId,
+        'format': format,
+        'bitrate': bitrate,
+        'file_path': filePath,
+        'file_size': fileSize,
+        'created_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+  
+  static Future<String?> getAudioCachePath(String songId, String format) async {
+    final db = await database;
+    final id = '${songId}_$format';
+    
+    final result = await db.query(
+      'audio_cache',
+      columns: ['file_path'],
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+    
+    if (result.isNotEmpty) {
+      return result.first['file_path'] as String;
+    }
+    return null;
+  }
+  
+  static Future<String?> getAnyAudioCachePath(String songId) async {
+    final db = await database;
+    
+    final result = await db.query(
+      'audio_cache',
+      columns: ['file_path'],
+      where: 'song_id = ?',
+      whereArgs: [songId],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    
+    if (result.isNotEmpty) {
+      return result.first['file_path'] as String;
+    }
+    return null;
+  }
+  
+  static Future<void> updateAudioCacheLastPlayed(String songId) async {
+    final db = await database;
+    
+    await db.update(
+      'audio_cache',
+      {'last_played': DateTime.now().millisecondsSinceEpoch},
+      where: 'song_id = ?',
+      whereArgs: [songId],
+    );
+  }
+  
+  static Future<int> getAudioCacheTotalSize() async {
+    final db = await database;
+    
+    final result = await db.rawQuery(
+      'SELECT SUM(file_size) as total FROM audio_cache'
+    );
+    
+    if (result.isNotEmpty && result.first['total'] != null) {
+      return result.first['total'] as int;
+    }
+    return 0;
+  }
+  
+  static Future<int> getAudioCacheFileCount() async {
+    final db = await database;
+    
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as count FROM audio_cache'
+    );
+    
+    return Sqflite.firstIntValue(result) ?? 0;
+  }
+  
+  static Future<List<String>> getAllAudioCachePaths() async {
+    final db = await database;
+    
+    final result = await db.query(
+      'audio_cache',
+      columns: ['file_path'],
+    );
+    
+    return result.map((row) => row['file_path'] as String).toList();
+  }
+  
+  static Future<void> cleanupAudioCacheLRU(int maxSizeBytes) async {
+    final db = await database;
+    
+    // Get files ordered by last played (oldest first)
+    final files = await db.query(
+      'audio_cache',
+      orderBy: 'last_played ASC NULLS FIRST, created_at ASC',
+    );
+    
+    int totalSize = 0;
+    final toDelete = <String>[];
+    
+    // Calculate what to keep
+    for (int i = files.length - 1; i >= 0; i--) {
+      final fileSize = files[i]['file_size'] as int;
+      if (totalSize + fileSize <= maxSizeBytes) {
+        totalSize += fileSize;
+      } else {
+        toDelete.add(files[i]['id'] as String);
+      }
+    }
+    
+    // Delete oldest files
+    if (toDelete.isNotEmpty) {
+      await db.delete(
+        'audio_cache',
+        where: 'id IN (${toDelete.map((_) => '?').join(',')})',
+        whereArgs: toDelete,
+      );
+    }
+  }
+  
+  static Future<List<String>> getDeletedAudioCachePaths() async {
+    // This would track deleted entries, but for simplicity
+    // we'll handle this differently in the service
+    return [];
+  }
+  
+  static Future<void> clearAudioCache() async {
+    final db = await database;
+    await db.delete('audio_cache');
   }
 }

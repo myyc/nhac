@@ -10,7 +10,9 @@ import '../services/audio_cache_manager.dart';
 import '../services/mpris_service.dart';
 import '../services/audio_handler.dart';
 import '../services/cache_service.dart';
+import '../services/audio_file_cache_service.dart';
 import '../services/color_extraction_service.dart';
+import '../providers/network_provider.dart';
 import '../main.dart';
 
 class PlayerProvider extends ChangeNotifier {
@@ -19,6 +21,8 @@ class PlayerProvider extends ChangeNotifier {
   final ColorExtractionService _colorExtractionService = ColorExtractionService();
   NavidromeApi? _api;
   CacheService? _cacheService;
+  AudioFileCacheService? _audioFileCacheService;
+  NetworkProvider? _networkProvider;
   Timer? _preloadTimer;
   ConcatenatingAudioSource? _playlist;
   NhacAudioHandler? _audioHandler;
@@ -118,7 +122,7 @@ class PlayerProvider extends ChangeNotifier {
     });
   }
 
-  void setApi(NavidromeApi api) {
+  void setApi(NavidromeApi api, {NetworkProvider? networkProvider}) {
     // Check if the API is already set to the same instance
     if (_api == api) {
       print('[PlayerProvider] API already set to same instance, skipping');
@@ -127,6 +131,16 @@ class PlayerProvider extends ChangeNotifier {
     
     _api = api;
     _cacheService = CacheService(api: api);
+    
+    // Initialize audio file cache if network provider is available
+    if (networkProvider != null) {
+      _networkProvider = networkProvider;
+      _audioFileCacheService = AudioFileCacheService(
+        api: api,
+        networkProvider: networkProvider,
+      );
+    }
+    
     // Update the audio handler with the proper API if on Android
     if (Platform.isAndroid && _audioHandler != null) {
       _audioHandler!.updateApi(api);
@@ -170,8 +184,35 @@ class PlayerProvider extends ChangeNotifier {
           );
           // The audio handler will handle playback through the shared player
         } else {
-          final url = _api!.getStreamUrl(_currentSong!.id);
-          await _audioPlayer.setUrl(url);
+          // Check for cached audio file first
+          String? audioSource;
+          if (_audioFileCacheService != null) {
+            final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
+            if (cachedPath != null) {
+              audioSource = cachedPath;
+              print('[PlayerProvider] Restoring from cache: ${_currentSong!.title}');
+            }
+          }
+          
+          // Fall back to streaming if not cached
+          if (audioSource == null) {
+            final shouldTranscode = _networkProvider != null && 
+                                   !_networkProvider!.isOnWifi && 
+                                   !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+            audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+            
+            // Trigger background caching
+            _audioFileCacheService?.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
+          }
+          
+          // Set the audio source (either local file or stream URL)
+          if (audioSource.startsWith('/')) {
+            // Local file path
+            await _audioPlayer.setFilePath(audioSource);
+          } else {
+            // Stream URL
+            await _audioPlayer.setUrl(audioSource);
+          }
         }
         
         // Seek to saved position after URL is loaded
@@ -254,8 +295,35 @@ class PlayerProvider extends ChangeNotifier {
       );
       // The audio handler will handle playback through the shared player
     } else {
-      final url = _api!.getStreamUrl(song.id);
-      await _audioPlayer.setUrl(url);
+      // Check for cached audio file first
+      String? audioSource;
+      if (_audioFileCacheService != null) {
+        final cachedPath = await _audioFileCacheService!.getCachedAudioPath(song.id);
+        if (cachedPath != null) {
+          audioSource = cachedPath;
+          print('[PlayerProvider] Playing from cache: ${song.title}');
+        }
+      }
+      
+      // Fall back to streaming if not cached
+      if (audioSource == null) {
+        final shouldTranscode = _networkProvider != null && 
+                               !_networkProvider!.isOnWifi && 
+                               !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+        audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode);
+        
+        // Trigger background caching
+        _audioFileCacheService?.cacheAudioFile(song.id, albumId: song.albumId);
+      }
+      
+      // Set the audio source (either local file or stream URL)
+      if (audioSource.startsWith('/')) {
+        // Local file path
+        await _audioPlayer.setFilePath(audioSource);
+      } else {
+        // Stream URL
+        await _audioPlayer.setUrl(audioSource);
+      }
     }
     
     // Always use the shared player for playback
@@ -325,9 +393,38 @@ class PlayerProvider extends ChangeNotifier {
         // Use gapless playback for queues with multiple songs
         await _setupGaplessPlayback(startIndex);
       } else {
-        // Single song or gapless disabled
-        final url = _api!.getStreamUrl(_currentSong!.id);
-        await _audioPlayer.setUrl(url);
+        // Check for cached audio file first
+        String? audioSource;
+        if (_audioFileCacheService != null) {
+          final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
+          if (cachedPath != null) {
+            audioSource = cachedPath;
+            print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+          }
+        }
+        
+        // Fall back to streaming if not cached
+        if (audioSource == null) {
+          final shouldTranscode = _networkProvider != null && 
+                                 !_networkProvider!.isOnWifi && 
+                                 !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+          
+          // Trigger background caching for current and next tracks
+          if (_audioFileCacheService != null) {
+            _audioFileCacheService!.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
+            _audioFileCacheService!.preCacheNextTracks(songs, startIndex);
+          }
+        }
+        
+        // Set the audio source (either local file or stream URL)
+        if (audioSource.startsWith('/')) {
+          // Local file path
+          await _audioPlayer.setFilePath(audioSource);
+        } else {
+          // Stream URL
+          await _audioPlayer.setUrl(audioSource);
+        }
       }
     }
     
@@ -411,8 +508,38 @@ class PlayerProvider extends ChangeNotifier {
         _preloadedSongIds.remove(_currentSong!.id);
       }
       
-      final url = _api!.getStreamUrl(_currentSong!.id);
-      await _audioPlayer.setUrl(url);
+      // Check for cached audio file first
+      String? audioSource;
+      if (_audioFileCacheService != null) {
+        final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
+        if (cachedPath != null) {
+          audioSource = cachedPath;
+          print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+        }
+      }
+      
+      // Fall back to streaming if not cached
+      if (audioSource == null) {
+        final shouldTranscode = _networkProvider != null && 
+                               !_networkProvider!.isOnWifi && 
+                               !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+        
+        // Trigger background caching
+        if (_audioFileCacheService != null) {
+          _audioFileCacheService!.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
+          _audioFileCacheService!.preCacheNextTracks(_queue, _currentIndex);
+        }
+      }
+      
+      // Set the audio source (either local file or stream URL)
+      if (audioSource.startsWith('/')) {
+        // Local file path
+        await _audioPlayer.setFilePath(audioSource);
+      } else {
+        // Stream URL
+        await _audioPlayer.setUrl(audioSource);
+      }
       await _audioPlayer.play();
       
       notifyListeners();
@@ -456,8 +583,35 @@ class PlayerProvider extends ChangeNotifier {
         MprisService.instance.updateMetadata(_currentSong);
       }
       
-      final url = _api!.getStreamUrl(_currentSong!.id);
-      await _audioPlayer.setUrl(url);
+      // Check for cached audio file first
+      String? audioSource;
+      if (_audioFileCacheService != null) {
+        final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
+        if (cachedPath != null) {
+          audioSource = cachedPath;
+          print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+        }
+      }
+      
+      // Fall back to streaming if not cached
+      if (audioSource == null) {
+        final shouldTranscode = _networkProvider != null && 
+                               !_networkProvider!.isOnWifi && 
+                               !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+        
+        // Trigger background caching
+        _audioFileCacheService?.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
+      }
+      
+      // Set the audio source (either local file or stream URL)
+      if (audioSource.startsWith('/')) {
+        // Local file path
+        await _audioPlayer.setFilePath(audioSource);
+      } else {
+        // Stream URL
+        await _audioPlayer.setUrl(audioSource);
+      }
       await _audioPlayer.play();
       
       notifyListeners();
@@ -502,6 +656,8 @@ class PlayerProvider extends ChangeNotifier {
           artistId: songMap['artistId'],
           duration: songMap['duration'],
           track: songMap['track'],
+          discNumber: songMap['discNumber'],
+          discSubtitle: songMap['discSubtitle'],
           coverArt: songMap['coverArt'],
         );
         
@@ -515,6 +671,8 @@ class PlayerProvider extends ChangeNotifier {
           artistId: item['artistId'],
           duration: item['duration'],
           track: item['track'],
+          discNumber: item['discNumber'],
+          discSubtitle: item['discSubtitle'],
           coverArt: item['coverArt'],
         )).toList();
         
@@ -554,6 +712,8 @@ class PlayerProvider extends ChangeNotifier {
         'artistId': _currentSong!.artistId,
         'duration': _currentSong!.duration,
         'track': _currentSong!.track,
+        'discNumber': _currentSong!.discNumber,
+        'discSubtitle': _currentSong!.discSubtitle,
         'coverArt': _currentSong!.coverArt,
       };
       
@@ -566,6 +726,8 @@ class PlayerProvider extends ChangeNotifier {
         'artistId': song.artistId,
         'duration': song.duration,
         'track': song.track,
+        'discNumber': song.discNumber,
+        'discSubtitle': song.discSubtitle,
         'coverArt': song.coverArt,
       }).toList();
       

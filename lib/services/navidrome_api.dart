@@ -222,9 +222,16 @@ class NavidromeApi {
     };
   }
 
-  String getStreamUrl(String id) {
+  String getStreamUrl(String id, {bool transcode = false}) {
     final params = _getAuthParams();
     params['id'] = id;
+    
+    // Add transcoding parameters for mobile
+    if (transcode) {
+      params['format'] = 'mp3';
+      params['maxBitRate'] = '320';
+    }
+    
     final queryString = params.entries
         .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
         .join('&');

@@ -32,8 +32,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
   }
 
   Future<void> _loadArtistDetails() async {
-    final api = context.read<AuthProvider>().api;
-    if (api == null) return;
+    final cacheProvider = context.read<CacheProvider>();
 
     setState(() {
       _isLoading = true;
@@ -41,10 +40,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
     });
 
     try {
-      final result = await api.getArtist(widget.artist.id);
+      final albums = await cacheProvider.getAlbumsByArtist(widget.artist.id);
       if (mounted) {
         setState(() {
-          _albums = result['albums'];
+          _albums = albums;
           _isLoading = false;
         });
       }

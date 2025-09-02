@@ -11,6 +11,7 @@ import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/cache_provider.dart';
 import 'providers/theme_provider.dart';
+import 'providers/network_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/database_helper.dart';
@@ -109,6 +110,7 @@ class NhacApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => PlayerProvider()),
           ChangeNotifierProvider(create: (_) => CacheProvider()),
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
+          ChangeNotifierProvider(create: (_) => NetworkProvider()),
         ],
         child: Consumer2<ThemeProvider, PlayerProvider>(
           builder: (context, themeProvider, playerProvider, child) {
@@ -232,8 +234,9 @@ class _AuthWrapperState extends State<AuthWrapper> {
             _hasInitializedProviders = true;
             final playerProvider = context.read<PlayerProvider>();
             final cacheProvider = context.read<CacheProvider>();
-            playerProvider.setApi(authProvider.api!);
-            cacheProvider.initialize(authProvider.api!);
+            final networkProvider = context.read<NetworkProvider>();
+            playerProvider.setApi(authProvider.api!, networkProvider: networkProvider);
+            cacheProvider.initialize(authProvider.api!, networkProvider);
             
             // Initialize MPRIS service for Linux
             if (Platform.isLinux) {
