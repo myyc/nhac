@@ -1,9 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/cache_provider.dart';
 import '../providers/player_provider.dart';
 import '../screens/now_playing_screen.dart';
+import 'cached_cover_image.dart';
 
 class NowPlayingBar extends StatelessWidget {
   const NowPlayingBar({super.key});
@@ -15,7 +15,6 @@ class NowPlayingBar extends StatelessWidget {
         final song = playerProvider.currentSong;
         if (song == null) return const SizedBox.shrink();
         
-        final cacheProvider = context.read<CacheProvider>();
         final extractedColors = playerProvider.currentColors;
         final theme = Theme.of(context);
         
@@ -72,23 +71,16 @@ class NowPlayingBar extends StatelessWidget {
                             borderRadius: BorderRadius.circular(8),
                             color: theme.colorScheme.surfaceVariant,
                           ),
-                          child: song.coverArt != null
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(8),
-                                  child: CachedNetworkImage(
-                                    key: ValueKey('nowplaying_${song.id}_${song.coverArt}'),
-                                    imageUrl: cacheProvider.getCoverArtUrl(song.coverArt, size: 112),
-                                    fit: BoxFit.cover,
-                                    memCacheWidth: 112,
-                                    memCacheHeight: 112,
-                                    cacheKey: 'cover_${song.id}_${song.coverArt}_112',
-                                    placeholder: (context, url) => 
-                                        const Center(child: Icon(Icons.music_note, size: 24)),
-                                    errorWidget: (context, url, error) => 
-                                        const Center(child: Icon(Icons.music_note, size: 24)),
-                                  ),
-                                )
-                              : const Center(child: Icon(Icons.music_note)),
+                          child: CachedCoverImage(
+                            key: ValueKey('nowplaying_${song.id}_${song.coverArt}'),
+                            coverArtId: song.coverArt,
+                            size: 112,
+                            width: 56,
+                            height: 56,
+                            borderRadius: BorderRadius.circular(8),
+                            placeholder: const Center(child: Icon(Icons.music_note, size: 24)),
+                            errorWidget: const Center(child: Icon(Icons.music_note, size: 24)),
+                          ),
                         ),
                         const SizedBox(width: 16),
                         Expanded(

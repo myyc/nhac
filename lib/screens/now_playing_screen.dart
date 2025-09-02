@@ -3,13 +3,13 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../widgets/custom_window_frame.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/cache_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
 import '../services/share_service.dart';
+import '../widgets/cached_cover_image.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
 
@@ -90,69 +90,52 @@ class NowPlayingScreen extends StatelessWidget {
                           ),
                         ],
                       ),
-                      child: song.coverArt != null
-                          ? ClipRRect(
-                              borderRadius: BorderRadius.circular(20),
-                              child: CachedNetworkImage(
-                                key: ValueKey('playing_${song.id}_${song.coverArt}'),
-                                imageUrl: cacheProvider.getCoverArtUrl(song.coverArt, size: 800),
-                                cacheKey: 'cover_${song.id}_${song.coverArt}_800',
-                                fit: BoxFit.cover,
-                                placeholder: (context, url) => Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(20),
-                                    color: Theme.of(context).colorScheme.surfaceVariant,
-                                  ),
-                                  child: Center(
-                                    child: Column(
-                                      mainAxisAlignment: MainAxisAlignment.center,
-                                      children: [
-                                        Icon(
-                                          Icons.music_note,
-                                          size: 60,
-                                          color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        SizedBox(
-                                          width: 24,
-                                          height: 24,
-                                          child: CircularProgressIndicator(
-                                            strokeWidth: 2,
-                                            color: Theme.of(context).colorScheme.primary,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ),
-                                errorWidget: (context, url, error) => Container(
-                                  decoration: BoxDecoration(
-                                    borderRadius: BorderRadius.circular(20),
-                                    color: Theme.of(context).colorScheme.surfaceVariant,
-                                  ),
-                                  child: Center(
-                                    child: Icon(
-                                      Icons.music_note,
-                                      size: 80,
-                                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            )
-                          : Container(
-                              decoration: BoxDecoration(
-                                borderRadius: BorderRadius.circular(20),
-                                color: Theme.of(context).colorScheme.surfaceVariant,
-                              ),
-                              child: Center(
-                                child: Icon(
+                      child: CachedCoverImage(
+                        key: ValueKey('playing_${song.id}_${song.coverArt}'),
+                        coverArtId: song.coverArt,
+                        size: 800,
+                        borderRadius: BorderRadius.circular(20),
+                        placeholder: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            color: Theme.of(context).colorScheme.surfaceVariant,
+                          ),
+                          child: Center(
+                            child: Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
                                   Icons.music_note,
-                                  size: 80,
+                                  size: 60,
                                   color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
                                 ),
-                              ),
+                                const SizedBox(height: 16),
+                                SizedBox(
+                                  width: 24,
+                                  height: 24,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 2,
+                                    color: Theme.of(context).colorScheme.primary,
+                                  ),
+                                ),
+                              ],
                             ),
+                          ),
+                        ),
+                        errorWidget: Container(
+                          decoration: BoxDecoration(
+                            borderRadius: BorderRadius.circular(20),
+                            color: Theme.of(context).colorScheme.surfaceVariant,
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.music_note,
+                              size: 80,
+                              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                            ),
+                          ),
+                        ),
+                      ),
                     ),
                   ),
                 ),

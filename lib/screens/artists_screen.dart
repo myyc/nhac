@@ -1,8 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
+import '../providers/cache_provider.dart';
 import '../models/artist.dart';
+import '../widgets/cached_cover_image.dart';
 import 'artist_detail_screen.dart';
 
 class ArtistsScreen extends StatefulWidget {
@@ -24,8 +25,7 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
   }
 
   Future<void> _loadArtists() async {
-    final api = context.read<AuthProvider>().api;
-    if (api == null) return;
+    final cacheProvider = context.read<CacheProvider>();
 
     setState(() {
       _isLoading = true;
@@ -33,7 +33,7 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
     });
 
     try {
-      final artists = await api.getArtists();
+      final artists = await cacheProvider.getArtists();
       if (mounted) {
         setState(() {
           _artists = artists;
@@ -85,22 +85,20 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
         itemBuilder: (context, index) {
           final artist = _artists![index];
           final api = context.read<AuthProvider>().api;
+          final cacheProvider = context.read<CacheProvider>();
           
           return ListTile(
             leading: CircleAvatar(
               backgroundColor: Theme.of(context).colorScheme.surfaceVariant,
-              child: artist.coverArt != null && api != null
+              child: artist.coverArt != null
                   ? ClipOval(
-                      child: CachedNetworkImage(
-                        imageUrl: api.getCoverArtUrl(artist.coverArt, size: 100),
-                        httpHeaders: const {
-                          'User-Agent': 'nhac/1.0.0',
-                        },
-                        fit: BoxFit.cover,
+                      child: CachedCoverImage(
+                        coverArtId: artist.coverArt,
+                        size: 100,
                         width: 40,
                         height: 40,
-                        placeholder: (context, url) => const Icon(Icons.person),
-                        errorWidget: (context, url, error) => const Icon(Icons.person),
+                        placeholder: const Icon(Icons.person),
+                        errorWidget: const Icon(Icons.person),
                       ),
                     )
                   : const Icon(Icons.person),

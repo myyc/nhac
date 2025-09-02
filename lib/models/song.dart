@@ -17,6 +17,7 @@ class Song {
   final String? path;
   final int? playCount;
   final int? discNumber;
+  final String? discSubtitle;
   final DateTime? created;
   final DateTime? starred;
   final String? type;
@@ -41,6 +42,7 @@ class Song {
     this.path,
     this.playCount,
     this.discNumber,
+    this.discSubtitle,
     this.created,
     this.starred,
     this.type,
@@ -48,6 +50,16 @@ class Song {
   });
 
   factory Song.fromJson(Map<String, dynamic> json) {
+    // Debug: Check if discSubtitle or similar fields exist
+    if (json['discNumber'] != null && json['discNumber'] > 1) {
+      final possibleFields = ['discSubtitle', 'discTitle', 'setSubtitle', 'discName'];
+      for (final field in possibleFields) {
+        if (json.containsKey(field) && json[field] != null) {
+          print('Found disc subtitle field: $field = ${json[field]}');
+        }
+      }
+    }
+    
     return Song(
       id: json['id'],
       title: json['title'],
@@ -67,6 +79,7 @@ class Song {
       path: json['path'],
       playCount: json['playCount'],
       discNumber: json['discNumber'],
+      discSubtitle: json['discSubtitle'],
       created: json['created'] != null 
           ? DateTime.parse(json['created']) 
           : null,

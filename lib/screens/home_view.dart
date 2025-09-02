@@ -5,7 +5,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/album.dart';
+import '../widgets/offline_indicator.dart';
+import '../widgets/cached_cover_image.dart';
 import 'album_detail_screen.dart';
 
 class HomeView extends StatefulWidget {
@@ -121,57 +124,38 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
                         ),
                       ],
                     ),
-                    child: album.coverArt != null
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(12),
-                            child: CachedNetworkImage(
-                              key: ValueKey('home_${album.id}_${album.coverArt}'),
-                              imageUrl: cacheProvider.getCoverArtUrl(album.coverArt, size: 320),
-                              cacheKey: 'cover_${album.id}_${album.coverArt}_320',
-                              fit: BoxFit.cover,
-                              memCacheWidth: 320,
-                              memCacheHeight: 320,
-                              placeholder: (context, url) => Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Theme.of(context).colorScheme.surfaceVariant,
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    Icons.album,
-                                    size: 40,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
-                                  ),
-                                ),
-                              ),
-                              errorWidget: (context, url, error) => Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(12),
-                                  color: Theme.of(context).colorScheme.surfaceVariant,
-                                ),
-                                child: Center(
-                                  child: Icon(
-                                    Icons.album,
-                                    size: 40,
-                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
-                                  ),
-                                ),
-                              ),
-                            ),
-                          )
-                        : Container(
-                            decoration: BoxDecoration(
-                              borderRadius: BorderRadius.circular(12),
-                              color: Theme.of(context).colorScheme.surfaceVariant,
-                            ),
-                            child: Center(
-                              child: Icon(
-                                Icons.album,
-                                size: 40,
-                                color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
-                              ),
-                            ),
+                    child: CachedCoverImage(
+                      key: ValueKey('home_${album.id}_${album.coverArt}'),
+                      coverArtId: album.coverArt,
+                      size: 320,
+                      borderRadius: BorderRadius.circular(12),
+                      placeholder: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.album,
+                            size: 40,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
                           ),
+                        ),
+                      ),
+                      errorWidget: Container(
+                        decoration: BoxDecoration(
+                          borderRadius: BorderRadius.circular(12),
+                          color: Theme.of(context).colorScheme.surfaceVariant,
+                        ),
+                        child: Center(
+                          child: Icon(
+                            Icons.album,
+                            size: 40,
+                            color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                   // Subtle gradient overlay
                   Positioned(
@@ -289,19 +273,27 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
         children: [
           const SizedBox(height: 16),
           
-          // Welcome message
+          // Welcome message with offline indicator
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 20),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  _getGreeting(),
-                  style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                    fontWeight: FontWeight.w800,
-                    letterSpacing: -0.8,
-                    height: 1.1,
-                  ),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Expanded(
+                      child: Text(
+                        _getGreeting(),
+                        style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                          fontWeight: FontWeight.w800,
+                          letterSpacing: -0.8,
+                          height: 1.1,
+                        ),
+                      ),
+                    ),
+                    const OfflineIndicator(),
+                  ],
                 ),
                 const SizedBox(height: 4),
                 Text(

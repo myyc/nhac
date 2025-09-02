@@ -6,6 +6,7 @@ import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
 import '../models/song.dart';
@@ -140,7 +141,8 @@ class _SearchScreenState extends State<SearchScreen> {
       subtitle: Text('${song.artist ?? 'Unknown Artist'} • ${song.album ?? ''}'),
       trailing: Text(song.formattedDuration),
       onTap: () async {
-        playerProvider.setApi(api!);
+        final networkProvider = context.read<NetworkProvider>();
+        playerProvider.setApi(api!, networkProvider: networkProvider);
         // If song has an albumId, load and play the full album from this song
         if (song.albumId != null) {
           try {
