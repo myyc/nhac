@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
@@ -315,9 +316,20 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       ),
     );
     
+    // Add ESC key handling for desktop
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      return CustomWindowFrame(
-        child: scaffold,
+      return RawKeyboardListener(
+        focusNode: FocusNode(),
+        autofocus: true,
+        onKey: (event) {
+          if (event is RawKeyDownEvent && 
+              event.logicalKey == LogicalKeyboardKey.escape) {
+            Navigator.of(context).pop();
+          }
+        },
+        child: CustomWindowFrame(
+          child: scaffold,
+        ),
       );
     }
     
