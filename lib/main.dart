@@ -54,6 +54,7 @@ void main() async {
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'dev.myyc.nhac.channel.audio',
         androidNotificationChannelName: 'Music playback',
+        androidNotificationIcon: 'drawable/ic_notification',
         androidNotificationOngoing: false,
         androidStopForegroundOnPause: false, // Keep service alive during pause
       ),
