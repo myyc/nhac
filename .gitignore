@@ -52,3 +52,6 @@ repo/
 
 # Release artifacts
 *.apk
+
+# Android build artifacts
+android/build/

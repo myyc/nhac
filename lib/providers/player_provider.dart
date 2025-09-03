@@ -114,7 +114,7 @@ class PlayerProvider extends ChangeNotifier {
   void setApi(NavidromeApi api, {NetworkProvider? networkProvider}) {
     // Check if the API is already set to the same instance
     if (_api == api) {
-      print('[PlayerProvider] API already set to same instance, skipping');
+      if (kDebugMode) print('[PlayerProvider] API already set to same instance, skipping');
       return;
     }
     
@@ -182,13 +182,13 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> _restoreAudioIfNeeded() async {
     // Check if already restoring to prevent concurrent operations
     if (_isRestoring) {
-      print('[PlayerProvider] Already restoring, skipping concurrent restore');
+      if (kDebugMode) print('[PlayerProvider] Already restoring, skipping concurrent restore');
       return;
     }
     
     if (_currentSong != null && _api != null && !_hasRestoredPosition) {
       _isRestoring = true;
-      print('[PlayerProvider] API set, restoring audio for ${_currentSong!.title}');
+      if (kDebugMode) print('[PlayerProvider] API set, restoring audio for ${_currentSong!.title}');
       
       // Store the position we want to restore
       final targetPosition = _position;
@@ -215,7 +215,7 @@ class PlayerProvider extends ChangeNotifier {
             final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
             if (cachedPath != null) {
               audioSource = cachedPath;
-              print('[PlayerProvider] Restoring from cache: ${_currentSong!.title}');
+              if (kDebugMode) print('[PlayerProvider] Restoring from cache: ${_currentSong!.title}');
             }
           }
           
@@ -242,7 +242,7 @@ class PlayerProvider extends ChangeNotifier {
         
         // Seek to saved position after URL is loaded
         if (targetPosition.inMilliseconds > 0) {
-          print('[PlayerProvider] Seeking to saved position: $targetPosition');
+          if (kDebugMode) print('[PlayerProvider] Seeking to saved position: $targetPosition');
           await _audioPlayer.seek(targetPosition);
           _position = targetPosition; // Ensure position is set correctly
         }
@@ -333,9 +333,9 @@ class PlayerProvider extends ChangeNotifier {
     }
     
     // Update audio handler for Android/Linux media session with current cached art
-    print('[PlayerProvider] Checking handlers - audioHandler: ${app_main.audioHandler != null}, actualAudioHandler: ${app_main.actualAudioHandler != null}');
+    if (kDebugMode) print('[PlayerProvider] Checking handlers - audioHandler: ${app_main.audioHandler != null}, actualAudioHandler: ${app_main.actualAudioHandler != null}');
     if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null) {
-      print('[PlayerProvider] Updating audio handler queue with ${songs.length} songs');
+      if (kDebugMode) print('[PlayerProvider] Updating audio handler queue with ${songs.length} songs');
       await app_main.actualAudioHandler!.updateQueueFromSongs(
         songs, 
         startIndex: startIndex,
@@ -353,7 +353,7 @@ class PlayerProvider extends ChangeNotifier {
           final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
           if (cachedPath != null) {
             audioSource = cachedPath;
-            print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+            if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
           }
         }
         
@@ -453,7 +453,7 @@ class PlayerProvider extends ChangeNotifier {
       // Try to use preloaded player for minimal gap
       final cachedPlayer = _cacheManager.getCachedPlayer(_currentSong!.id);
       if (cachedPlayer != null) {
-        print('[PlayerProvider] Using preloaded audio for ${_currentSong!.title}');
+        if (kDebugMode) print('[PlayerProvider] Using preloaded audio for ${_currentSong!.title}');
         _cacheManager.removeCachedPlayer(_currentSong!.id);
         _preloadedSongIds.remove(_currentSong!.id);
       }
@@ -464,7 +464,7 @@ class PlayerProvider extends ChangeNotifier {
         final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
         if (cachedPath != null) {
           audioSource = cachedPath;
-          print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+          if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
         }
       }
       
@@ -534,7 +534,7 @@ class PlayerProvider extends ChangeNotifier {
         final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
         if (cachedPath != null) {
           audioSource = cachedPath;
-          print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+          if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
         }
       }
       
@@ -587,7 +587,7 @@ class PlayerProvider extends ChangeNotifier {
     final positionMillis = prefs.getInt('player_position') ?? 0;
     final volume = prefs.getDouble('player_volume') ?? 1.0;
     
-    print('[PlayerProvider] Loading persisted state - position: ${positionMillis}ms');
+    if (kDebugMode) print('[PlayerProvider] Loading persisted state - position: ${positionMillis}ms');
     
     if (currentSongJson != null && queueJson != null) {
       try {
@@ -628,7 +628,7 @@ class PlayerProvider extends ChangeNotifier {
         await _audioPlayer.setVolume(_volume);
         
         // Just restore the state, don't load audio yet (API might not be set)
-        print('[PlayerProvider] State restored, waiting for API to load audio');
+        if (kDebugMode) print('[PlayerProvider] State restored, waiting for API to load audio');
         
         notifyListeners();
         
@@ -682,7 +682,7 @@ class PlayerProvider extends ChangeNotifier {
       await prefs.setInt('player_position', _position.inMilliseconds);
       await prefs.setDouble('player_volume', _volume);
       
-      print('[PlayerProvider] Saved state - position: ${_position.inMilliseconds}ms');
+      // Removed frequent position logging - too verbose for release builds
     } catch (e) {
       print('Error saving player state: $e');
     }
@@ -831,7 +831,7 @@ class PlayerProvider extends ChangeNotifier {
         _duration = duration;
       }
     } catch (e) {
-      print('[PlayerProvider] Error switching to preloaded player: $e');
+      if (kDebugMode) print('[PlayerProvider] Error switching to preloaded player: $e');
     }
   }
 
