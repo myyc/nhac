@@ -1,0 +1,55 @@
+app-id: dev.myyc.nhac
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: nhac
+finish-args:
+  # Network access for streaming
+  - --share=network
+  # Audio playback
+  - --socket=pulseaudio
+  # X11 + XShm access
+  - --socket=x11
+  - --share=ipc
+  # Wayland access
+  - --socket=wayland
+  # OpenGL access for rendering
+  - --device=dri
+  # MPRIS support
+  - --own-name=org.mpris.MediaPlayer2.nhac
+  # Filesystem access for caching
+  - --filesystem=xdg-cache
+  - --filesystem=xdg-config
+  # For window decorations
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.FileChooser
+  # For notifications
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  - name: nhac
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: .
+    build-commands:
+      # Build Flutter app
+      - flutter build linux --release
+      
+      # Install application
+      - install -Dm755 build/linux/x64/release/bundle/nhac /app/bin/nhac
+      
+      # Install libraries
+      - cp -r build/linux/x64/release/bundle/lib /app/
+      
+      # Install data
+      - cp -r build/linux/x64/release/bundle/data /app/
+      
+      # Install desktop file
+      - install -Dm644 linux/nhac.desktop /app/share/applications/dev.myyc.nhac.desktop
+      
+      # Install icon
+      - install -Dm644 linux/nhac.png /app/share/icons/hicolor/256x256/apps/dev.myyc.nhac.png
+      
+      # Install AppStream metadata
+      - install -Dm644 linux/dev.myyc.nhac.metainfo.xml /app/share/metainfo/dev.myyc.nhac.metainfo.xml
