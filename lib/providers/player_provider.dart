@@ -12,7 +12,7 @@ import '../services/cache_service.dart';
 import '../services/audio_file_cache_service.dart';
 import '../services/color_extraction_service.dart';
 import '../providers/network_provider.dart';
-import '../main.dart';
+import '../main.dart' as app_main;
 
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _audioPlayer;
@@ -24,7 +24,8 @@ class PlayerProvider extends ChangeNotifier {
   NetworkProvider? _networkProvider;
   Timer? _preloadTimer;
   ConcatenatingAudioSource? _playlist;
-  NhacAudioHandler? _audioHandler;
+  StreamSubscription? _mediaItemSubscription;
+  DateTime? _lastPreloadCheck;
   
   Song? _currentSong;
   String? _currentCoverArtPath; // Local path to cached cover art
@@ -53,13 +54,12 @@ class PlayerProvider extends ChangeNotifier {
       ? _api!.getStreamUrl(_currentSong!.id) 
       : null;
   
-  PlayerProvider() : _audioPlayer = globalAudioPlayer {
+  // Navigation state getters for UI
+  bool get canGoNext => _queue.isNotEmpty && _currentIndex < _queue.length - 1;
+  bool get canGoPrevious => _queue.isNotEmpty && (_currentIndex > 0 || _position.inSeconds >= 3);
+  
+  PlayerProvider() : _audioPlayer = app_main.globalAudioPlayer {
     // Use the shared audio player instance from main.dart
-    if ((Platform.isAndroid || Platform.isLinux) && audioHandler != null) {
-      _audioHandler = audioHandler;
-    } else {
-      _audioHandler = null;
-    }
     _initializePlayer();
     _cacheManager.initialize();
     _loadPersistedState();
@@ -131,8 +131,49 @@ class PlayerProvider extends ChangeNotifier {
     }
     
     // Update the audio handler with the proper API if on Android or Linux
-    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
-      _audioHandler!.updateApi(api);
+    if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null) {
+      app_main.actualAudioHandler!.updateApi(api);
+      
+      // Cancel any existing subscription before creating a new one
+      _mediaItemSubscription?.cancel();
+      
+      // Set up listener for mediaItem changes (use the proxy for listening)
+      if (app_main.audioHandler != null) {
+        _mediaItemSubscription = app_main.audioHandler!.mediaItem.listen((mediaItem) async {
+          if (mediaItem != null && _queue.isNotEmpty) {
+          // Find the song in the queue that matches this media item
+          final songIndex = _queue.indexWhere((song) => song.id == mediaItem.id);
+          
+          if (songIndex != -1) {
+            // Check if this is actually a different song
+            final isNewSong = _currentSong?.id != mediaItem.id;
+            
+            if (isNewSong) {
+              // Update current song and index
+              _currentIndex = songIndex;
+              _currentSong = _queue[songIndex];
+              
+              // Reset position and update visuals for a new song
+              _position = Duration.zero; // Reset position for new song
+              _hasRestoredPosition = true; // Not restoring
+              _isRestoring = false;
+              
+              // Cache cover art for the new song
+              await _cacheCoverArt(_currentSong!);
+              
+              // Extract colors from album art
+              await _extractColorsFromCurrentSong();
+              
+              // Pre-load next cover art
+              _preloadNextCoverArt();
+              
+              notifyListeners();
+              _savePlayerState();
+            }
+            }
+          }
+        });
+      }
     }
     // Now that we have the API, try to restore the audio if we have persisted state
     _restoreAudioIfNeeded();
@@ -159,11 +200,11 @@ class PlayerProvider extends ChangeNotifier {
         // Extract colors from album art
         await _extractColorsFromCurrentSong();
         
-        // Update audio handler for Android/Linux media session with cached art
-        if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
-          await _audioHandler!.updateQueueFromSongs(
-            [_currentSong!], 
-            startIndex: 0,
+        // Update audio handler for Android/Linux media session with full queue
+        if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null) {
+          await app_main.actualAudioHandler!.updateQueueFromSongs(
+            _queue,  // Use the full queue, not just current song
+            startIndex: _currentIndex,
             coverArtPaths: [_currentCoverArtPath],
           );
           // The audio handler will handle playback through the shared player
@@ -248,69 +289,6 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> playSong(Song song) async {
-    if (_api == null) return;
-    
-    _currentSong = song;
-    _queue = [song];
-    _currentIndex = 0;
-    _hasRestoredPosition = true; // New playback, not restoring
-    _isRestoring = false; // Not restoring
-    _position = Duration.zero; // Reset position for new song
-    _playlist = null; // Clear playlist for single song
-    
-    // Cache cover art for the current song
-    await _cacheCoverArt(song);
-    
-    // Extract colors from album art
-    await _extractColorsFromCurrentSong();
-    
-    // Update audio handler for Android/Linux media session with cached art
-    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
-      await _audioHandler!.updateQueueFromSongs(
-        [song], 
-        startIndex: 0,
-        coverArtPaths: [_currentCoverArtPath],
-      );
-      // The audio handler will handle playback through the shared player
-    } else {
-      // Check for cached audio file first
-      String? audioSource;
-      if (_audioFileCacheService != null) {
-        final cachedPath = await _audioFileCacheService!.getCachedAudioPath(song.id);
-        if (cachedPath != null) {
-          audioSource = cachedPath;
-          print('[PlayerProvider] Playing from cache: ${song.title}');
-        }
-      }
-      
-      // Fall back to streaming if not cached
-      if (audioSource == null) {
-        final shouldTranscode = _networkProvider != null && 
-                               !_networkProvider!.isOnWifi && 
-                               !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-        audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode);
-        
-        // Trigger background caching
-        _audioFileCacheService?.cacheAudioFile(song.id, albumId: song.albumId);
-      }
-      
-      // Set the audio source (either local file or stream URL)
-      if (audioSource.startsWith('/')) {
-        // Local file path
-        await _audioPlayer.setFilePath(audioSource);
-      } else {
-        // Stream URL
-        await _audioPlayer.setUrl(audioSource);
-      }
-    }
-    
-    // Always use the shared player for playback
-    await _audioPlayer.play();
-    
-    notifyListeners();
-    _savePlayerState();
-  }
 
   Future<void> playQueue(List<Song> songs, {int startIndex = 0}) async {
     if (_api == null || songs.isEmpty) return;
@@ -348,15 +326,17 @@ class PlayerProvider extends ChangeNotifier {
           }
         }
         // Update handler with all cached paths if still playing same queue
-        if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null && _queue == songs) {
-          await _audioHandler!.updateCoverArtPaths(coverArtPaths);
+        if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null && _queue == songs) {
+          await app_main.actualAudioHandler!.updateCoverArtPaths(coverArtPaths);
         }
       });
     }
     
     // Update audio handler for Android/Linux media session with current cached art
-    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
-      await _audioHandler!.updateQueueFromSongs(
+    print('[PlayerProvider] Checking handlers - audioHandler: ${app_main.audioHandler != null}, actualAudioHandler: ${app_main.actualAudioHandler != null}');
+    if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null) {
+      print('[PlayerProvider] Updating audio handler queue with ${songs.length} songs');
+      await app_main.actualAudioHandler!.updateQueueFromSongs(
         songs, 
         startIndex: startIndex,
         coverArtPaths: [_currentCoverArtPath], // Start with just current song's art
@@ -413,13 +393,14 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> addToQueue(Song song) async {
-    _queue.add(song);
-    
-    if (_currentSong == null) {
-      await playSong(song);
+    if (_queue.isEmpty) {
+      // If no queue, start playing this song as a new queue
+      await playQueue([song], startIndex: 0);
+    } else {
+      // Add to existing queue
+      _queue.add(song);
+      notifyListeners();
     }
-    
-    notifyListeners();
   }
 
   Future<void> play() async {
@@ -442,10 +423,10 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> next() async {
     if (_queue.isEmpty || _api == null) return;
     
-    // For Android/Linux, use the audio handler to skip to next
-    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
-      await _audioHandler!.skipToNext();
-      // The handler will update the player and media item
+    // Always use the audio handler for navigation on Android/Linux
+    if ((Platform.isAndroid || Platform.isLinux) && app_main.audioHandler != null) {
+      await app_main.audioHandler!.skipToNext();
+      // The handler will update everything via the mediaItem listener
       return;
     }
     
@@ -520,10 +501,10 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> previous() async {
     if (_queue.isEmpty || _api == null) return;
     
-    // For Android/Linux, use the audio handler to skip to previous
-    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
-      await _audioHandler!.skipToPrevious();
-      // The handler will update the player and media item
+    // Always use the audio handler for navigation on Android/Linux
+    if ((Platform.isAndroid || Platform.isLinux) && app_main.audioHandler != null) {
+      await app_main.audioHandler!.skipToPrevious();
+      // The handler will update everything via the mediaItem listener
       return;
     }
     
@@ -774,6 +755,14 @@ class PlayerProvider extends ChangeNotifier {
   }
   
   void _checkPreloadNeeded() {
+    // Throttle preload checks to once per second
+    final now = DateTime.now();
+    if (_lastPreloadCheck != null && 
+        now.difference(_lastPreloadCheck!).inMilliseconds < 1000) {
+      return;
+    }
+    _lastPreloadCheck = now;
+    
     // With gapless playback, tracks are added to the playlist dynamically
     // This method is now primarily for fallback/single track mode
     if (!_useGaplessPlayback && _api != null && _queue.isNotEmpty) {
@@ -799,29 +788,24 @@ class PlayerProvider extends ChangeNotifier {
     while (trackIndex < _queue.length && totalPreloaded < bufferNeeded) {
       final song = _queue[trackIndex];
       
-      // Skip if already preloaded
-      if (!_preloadedSongIds.contains(song.id)) {
+      // Check if already cached in the cache manager (not just our local tracking)
+      final cachedPlayer = _cacheManager.getCachedPlayer(song.id);
+      if (cachedPlayer == null) {
+        // Not cached, so preload it
         final url = _api!.getStreamUrl(song.id);
         final player = await _cacheManager.preloadTrack(song.id, url);
         
         if (player != null) {
           _preloadedSongIds.add(song.id);
-          
-          // Add the duration of this track to our total
-          if (song.duration != null) {
-            totalPreloaded += Duration(seconds: song.duration!);
-          } else {
-            // Assume 3 minutes if duration unknown
-            totalPreloaded += const Duration(minutes: 3);
-          }
         }
+      }
+      
+      // Add the duration of this track to our total
+      if (song.duration != null) {
+        totalPreloaded += Duration(seconds: song.duration!);
       } else {
-        // Track already preloaded, just add its duration
-        if (song.duration != null) {
-          totalPreloaded += Duration(seconds: song.duration!);
-        } else {
-          totalPreloaded += const Duration(minutes: 3);
-        }
+        // Assume 3 minutes if duration unknown
+        totalPreloaded += const Duration(minutes: 3);
       }
       
       trackIndex++;
@@ -881,6 +865,7 @@ class PlayerProvider extends ChangeNotifier {
   @override
   void dispose() {
     _preloadTimer?.cancel();
+    _mediaItemSubscription?.cancel();
     _savePlayerState();
     _audioPlayer.dispose();
     _cacheManager.dispose();

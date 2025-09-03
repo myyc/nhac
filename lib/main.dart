@@ -19,7 +19,8 @@ import 'services/audio_handler.dart';
 import 'services/navidrome_api.dart';
 import 'theme/app_theme.dart';
 
-late NhacAudioHandler? audioHandler;
+late BaseAudioHandler? audioHandler;
+late NhacAudioHandler? actualAudioHandler;
 late AudioPlayer globalAudioPlayer;
 
 void main() async {
@@ -46,11 +47,14 @@ void main() async {
       username: '',
       password: '',
     );
+    // Create the actual handler
+    actualAudioHandler = NhacAudioHandler(
+      globalAudioPlayer, // Use the shared player instance
+      dummyApi, // This will be properly set later in PlayerProvider
+    );
+    
     audioHandler = await AudioService.init(
-      builder: () => NhacAudioHandler(
-        globalAudioPlayer, // Use the shared player instance
-        dummyApi, // This will be properly set later in PlayerProvider
-      ),
+      builder: () => actualAudioHandler!,
       config: const AudioServiceConfig(
         androidNotificationChannelId: 'dev.myyc.nhac.channel.audio',
         androidNotificationChannelName: 'Music playback',
@@ -58,7 +62,7 @@ void main() async {
         androidNotificationOngoing: false,
         androidStopForegroundOnPause: false, // Keep service alive during pause
       ),
-    ) as NhacAudioHandler;
+    );
   } else {
     audioHandler = null;
   }
