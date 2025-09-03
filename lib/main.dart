@@ -15,7 +15,6 @@ import 'providers/network_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/database_helper.dart';
-import 'services/mpris_service.dart';
 import 'services/audio_handler.dart';
 import 'services/navidrome_api.dart';
 import 'theme/app_theme.dart';
@@ -39,8 +38,8 @@ void main() async {
   // Create a single AudioPlayer instance to be shared
   globalAudioPlayer = AudioPlayer();
   
-  // Initialize audio service for Android
-  if (Platform.isAndroid) {
+  // Initialize audio service for Android and Linux
+  if (Platform.isAndroid || Platform.isLinux) {
     // Create a dummy API instance that will be replaced later
     final dummyApi = NavidromeApi(
       baseUrl: 'http://localhost',
@@ -239,10 +238,7 @@ class _AuthWrapperState extends State<AuthWrapper> {
             playerProvider.setApi(authProvider.api!, networkProvider: networkProvider);
             cacheProvider.initialize(authProvider.api!, networkProvider);
             
-            // Initialize MPRIS service for Linux
-            if (Platform.isLinux) {
-              MprisService.instance.initialize(playerProvider);
-            }
+            // MPRIS is now handled through audio_service, no separate initialization needed
           }
           
           return const HomeScreen();

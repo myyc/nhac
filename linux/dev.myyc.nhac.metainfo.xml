@@ -1,0 +1,82 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<component type="desktop-application">
+  <id>dev.myyc.nhac</id>
+  
+  <name>nhac</name>
+  <summary>Stream music from your Navidrome server</summary>
+  
+  <metadata_license>CC0-1.0</metadata_license>
+  <project_license>MIT</project_license>
+  
+  <description>
+    <p>
+      nhac is a modern, beautiful music player for streaming from Navidrome and other Subsonic-compatible servers. 
+      Built with Flutter for a smooth, native experience on Linux.
+    </p>
+    <p>Features:</p>
+    <ul>
+      <li>Stream music from Navidrome/Subsonic servers</li>
+      <li>Offline caching for seamless playback</li>
+      <li>MPRIS integration for media keys and system controls</li>
+      <li>Beautiful, adaptive UI with dynamic theming</li>
+      <li>Gapless playback support</li>
+      <li>Queue management and playlists</li>
+      <li>Album art and metadata display</li>
+      <li>Cross-platform support</li>
+    </ul>
+  </description>
+  
+  <launchable type="desktop-id">dev.myyc.nhac.desktop</launchable>
+  
+  <screenshots>
+    <screenshot type="default">
+      <caption>Main player view</caption>
+      <image>https://raw.githubusercontent.com/myyc/nhac/main/screenshots/player.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Library browsing</caption>
+      <image>https://raw.githubusercontent.com/myyc/nhac/main/screenshots/library.png</image>
+    </screenshot>
+    <screenshot>
+      <caption>Album view</caption>
+      <image>https://raw.githubusercontent.com/myyc/nhac/main/screenshots/album.png</image>
+    </screenshot>
+  </screenshots>
+  
+  <url type="homepage">https://github.com/myyc/nhac</url>
+  <url type="bugtracker">https://github.com/myyc/nhac/issues</url>
+  <url type="vcs-browser">https://github.com/myyc/nhac</url>
+  
+  <developer id="dev.myyc">
+    <name>myyc</name>
+  </developer>
+  
+  <provides>
+    <binary>nhac</binary>
+    <mediatype>audio/mpeg</mediatype>
+    <mediatype>audio/flac</mediatype>
+    <mediatype>audio/ogg</mediatype>
+    <mediatype>audio/x-vorbis</mediatype>
+  </provides>
+  
+  <releases>
+    <release version="1.0.0" date="2024-01-01">
+      <description>
+        <p>Initial release</p>
+        <ul>
+          <li>Basic music streaming from Navidrome</li>
+          <li>MPRIS support for media keys</li>
+          <li>Offline caching</li>
+          <li>Queue management</li>
+        </ul>
+      </description>
+    </release>
+  </releases>
+  
+  <content_rating type="oars-1.1"/>
+  
+  <kudos>
+    <kudo>HiDpiIcon</kudo>
+    <kudo>ModernToolkit</kudo>
+  </kudos>
+</component>

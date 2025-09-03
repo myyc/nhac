@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:connectivity_plus/connectivity_plus.dart';
 
@@ -14,6 +15,7 @@ class NetworkProvider extends ChangeNotifier {
   
   NetworkType _currentNetworkType = NetworkType.wifi;
   bool _isOffline = false;
+  bool _isFlatpak = false;
   
   NetworkType get currentNetworkType => _currentNetworkType;
   bool get isOffline => _isOffline;
@@ -25,13 +27,35 @@ class NetworkProvider extends ChangeNotifier {
   }
   
   Future<void> _initialize() async {
+    // Check if running in Flatpak
+    _isFlatpak = Platform.isLinux && 
+                  (Platform.environment['FLATPAK_ID'] != null || 
+                   File('/.flatpak-info').existsSync());
+    
     // Check initial connectivity
     await _checkConnectivity();
     
-    // Listen for connectivity changes
-    _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
-      _handleConnectivityChange,
-    );
+    // Listen for connectivity changes (may fail in Flatpak without system bus)
+    try {
+      _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
+        _handleConnectivityChange,
+        onError: (error) {
+          debugPrint('[NetworkProvider] Connectivity monitoring error: $error');
+          // Assume online in Flatpak if monitoring fails
+          if (_isFlatpak) {
+            _handleConnectivityChange([ConnectivityResult.wifi]);
+          }
+        },
+      );
+    } catch (e) {
+      debugPrint('[NetworkProvider] Failed to setup connectivity monitoring: $e');
+      // Assume online in Flatpak
+      if (_isFlatpak) {
+        _currentNetworkType = NetworkType.wifi;
+        _isOffline = false;
+        notifyListeners();
+      }
+    }
   }
   
   Future<void> _checkConnectivity() async {
@@ -40,6 +64,11 @@ class NetworkProvider extends ChangeNotifier {
       _handleConnectivityChange(results);
     } catch (e) {
       debugPrint('[NetworkProvider] Error checking connectivity: $e');
+      // In Flatpak without system bus access, assume we're online
+      if (_isFlatpak) {
+        debugPrint('[NetworkProvider] Assuming online connectivity in Flatpak');
+        _handleConnectivityChange([ConnectivityResult.wifi]);
+      }
     }
   }
   

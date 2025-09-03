@@ -1,10 +1,13 @@
 [Desktop Entry]
-Version=1.0
-Type=Application
-Name=Nhac
-Comment=Flutter music player application
-Exec=nhac
-Icon=nhac
+Name=nhac
+GenericName=Music Player
+Comment=Stream music from your Navidrome server
+Exec=nhac %U
+Icon=dev.myyc.nhac
 Terminal=false
-Categories=AudioVideo;Audio;Music;Player;
+Type=Application
+Categories=AudioVideo;Audio;Player;Music;
+Keywords=music;audio;player;streaming;navidrome;subsonic;
+MimeType=audio/mpeg;audio/x-mpeg;audio/mp3;audio/x-mp3;audio/mpeg3;audio/x-mpeg3;audio/mpg;audio/x-mpg;audio/x-mpegaudio;audio/flac;audio/x-flac;audio/ogg;audio/vorbis;audio/x-vorbis;audio/x-ogg;audio/x-oggflac;
+StartupNotify=true
 StartupWMClass=nhac
