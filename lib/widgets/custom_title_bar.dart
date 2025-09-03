@@ -1,6 +1,6 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:window_manager/window_manager.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 
 class CustomTitleBar extends StatefulWidget implements PreferredSizeWidget {
   final Widget? title;
@@ -21,46 +21,32 @@ class CustomTitleBar extends StatefulWidget implements PreferredSizeWidget {
   State<CustomTitleBar> createState() => _CustomTitleBarState();
 }
 
-class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
+class _CustomTitleBarState extends State<CustomTitleBar> {
   bool _isMaximized = false;
   
   @override
   void initState() {
     super.initState();
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      windowManager.addListener(this);
-      _checkMaximized();
+      // Check initial maximized state
+      _isMaximized = appWindow.isMaximized;
     }
   }
   
   @override
   void dispose() {
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      windowManager.removeListener(this);
-    }
     super.dispose();
   }
   
-  Future<void> _checkMaximized() async {
-    final isMaximized = await windowManager.isMaximized();
-    if (mounted && isMaximized != _isMaximized) {
-      setState(() {
-        _isMaximized = isMaximized;
-      });
-    }
-  }
-  
-  @override
-  void onWindowMaximize() {
+  void _toggleMaximize() {
     setState(() {
-      _isMaximized = true;
-    });
-  }
-  
-  @override
-  void onWindowUnmaximize() {
-    setState(() {
-      _isMaximized = false;
+      if (_isMaximized) {
+        appWindow.restore();
+        _isMaximized = false;
+      } else {
+        appWindow.maximize();
+        _isMaximized = true;
+      }
     });
   }
   
@@ -76,15 +62,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
     
     final theme = Theme.of(context);
     
-    return GestureDetector(
-      onPanStart: (_) => windowManager.startDragging(),
-      onDoubleTap: () async {
-        if (_isMaximized) {
-          await windowManager.unmaximize();
-        } else {
-          await windowManager.maximize();
-        }
-      },
+    return WindowTitleBarBox(
       child: Material(
         color: theme.colorScheme.surface,
         child: Container(
@@ -103,34 +81,39 @@ class _CustomTitleBarState extends State<CustomTitleBar> with WindowListener {
               if (widget.leading == null) const SizedBox(width: 16),
               if (widget.title != null) 
                 Expanded(
-                  child: DefaultTextStyle(
-                    style: theme.textTheme.titleLarge!,
-                    child: widget.title!,
+                  child: GestureDetector(
+                    onDoubleTap: _toggleMaximize,
+                    child: MoveWindow(
+                      child: DefaultTextStyle(
+                        style: theme.textTheme.titleLarge!,
+                        child: widget.title!,
+                      ),
+                    ),
                   ),
                 ),
-              if (widget.title == null) const Spacer(),
+              if (widget.title == null) 
+                Expanded(
+                  child: GestureDetector(
+                    onDoubleTap: _toggleMaximize,
+                    child: MoveWindow(),
+                  ),
+                ),
               if (widget.actions != null) ...widget.actions!,
               
               // Window control buttons
               _WindowButton(
                 icon: Icons.remove,
-                onPressed: () => windowManager.minimize(),
+                onPressed: () => appWindow.minimize(),
                 hoverColor: theme.colorScheme.onSurface.withOpacity(0.08),
               ),
               _WindowButton(
                 icon: _isMaximized ? Icons.filter_none : Icons.crop_square,
-                onPressed: () async {
-                  if (_isMaximized) {
-                    await windowManager.unmaximize();
-                  } else {
-                    await windowManager.maximize();
-                  }
-                },
+                onPressed: _toggleMaximize,
                 hoverColor: theme.colorScheme.onSurface.withOpacity(0.08),
               ),
               _WindowButton(
                 icon: Icons.close,
-                onPressed: () => windowManager.close(),
+                onPressed: () => appWindow.close(),
                 hoverColor: Colors.red.withOpacity(0.1),
                 iconColor: Colors.red,
               ),
