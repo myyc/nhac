@@ -154,19 +154,20 @@ class _SearchScreenState extends State<SearchScreen> {
               if (songIndex != -1) {
                 playerProvider.playQueue(albumSongs, startIndex: songIndex);
               } else {
-                // If song not found in album, just play the song
-                playerProvider.playSong(song);
+                // If song not found in album, just play as single track
+                playerProvider.playQueue([song], startIndex: 0);
               }
             } else {
-              playerProvider.playSong(song);
+              // Album has no songs, just play as single track
+              playerProvider.playQueue([song], startIndex: 0);
             }
           } catch (e) {
-            // If loading album fails, just play the single song
-            playerProvider.playSong(song);
+            // If loading album fails, just play as single track
+            playerProvider.playQueue([song], startIndex: 0);
           }
         } else {
-          // No album info, just play the single song
-          playerProvider.playSong(song);
+          // No album info, just play as single track
+          playerProvider.playQueue([song], startIndex: 0);
         }
       },
     );

@@ -17,7 +17,7 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     _listenForCurrentSongIndexChanges();
     _listenForSequenceStateChanges();
     _listenForPositionChanges();
-    _listenForCompletionOnLinux();
+    _listenForCompletion();
   }
   
   // Method to update the API after initialization
@@ -102,6 +102,7 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
   }
   
   void _listenForCurrentSongIndexChanges() {
+    // Listen to index changes for all platforms now that we use setAudioSources
     _player.currentIndexStream.listen((index) {
       final playlist = queue.value;
       if (index == null || playlist.isEmpty) return;
@@ -141,16 +142,14 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     });
   }
   
-  void _listenForCompletionOnLinux() {
-    // On Linux, we need to handle track completion manually
-    if (Platform.isLinux) {
-      _player.processingStateStream.listen((state) {
-        if (state == ProcessingState.completed) {
-          // Auto-advance to next track
-          skipToNext();
-        }
-      });
-    }
+  void _listenForCompletion() {
+    // Handle track completion for auto-advance
+    _player.processingStateStream.listen((state) {
+      if (state == ProcessingState.completed) {
+        // Auto-advance to next track
+        skipToNext();
+      }
+    });
   }
   
   MediaItem _createMediaItem(Song song, {String? coverArtPath}) {
@@ -188,8 +187,16 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     int startIndex = 0,
     List<String?>? coverArtPaths,
   }) async {
+    print('[AudioHandler] updateQueueFromSongs() - received ${songs.length} songs, startIndex: $startIndex');
+    if (songs.isNotEmpty && startIndex < songs.length) {
+      print('[AudioHandler] Starting with song: ${songs[startIndex].title} (track ${songs[startIndex].track})');
+    }
+    
+    // Simple: always replace the queue and set the index
     _queue = songs;
     _currentIndex = startIndex;
+    
+    print('[AudioHandler] Queue updated - ${_queue.length} songs, currentIndex: $_currentIndex');
     
     // Store cover art paths if provided
     if (coverArtPaths != null) {
@@ -208,33 +215,23 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     // Update the queue
     queue.add(mediaItems);
     
-    // On Linux, just_audio_media_kit doesn't support ConcatenatingAudioSource
-    // So we'll play tracks individually and handle queue navigation manually
-    if (Platform.isLinux) {
-      // Just set the current track
-      if (songs.isNotEmpty && startIndex < songs.length) {
-        final url = _api.getStreamUrl(songs[startIndex].id);
-        final coverArtPath = startIndex < _coverArtPaths.length ? _coverArtPaths[startIndex] : null;
-        await _player.setAudioSource(AudioSource.uri(
-          Uri.parse(url),
-          tag: _createMediaItem(songs[startIndex], coverArtPath: coverArtPath),
-        ));
-      }
-    } else {
-      // Android can use ConcatenatingAudioSource for gapless playback
-      final audioSources = <AudioSource>[];
-      for (int i = 0; i < songs.length; i++) {
-        final url = _api.getStreamUrl(songs[i].id);
-        final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
-        audioSources.add(AudioSource.uri(
-          Uri.parse(url),
-          tag: _createMediaItem(songs[i], coverArtPath: coverArtPath),
-        ));
-      }
-      
-      // Set the playlist
-      final playlist = ConcatenatingAudioSource(children: audioSources);
-      await _player.setAudioSource(playlist, initialIndex: startIndex);
+    // Create audio sources for all songs
+    final audioSources = <AudioSource>[];
+    for (int i = 0; i < songs.length; i++) {
+      final url = _api.getStreamUrl(songs[i].id);
+      final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
+      audioSources.add(AudioSource.uri(
+        Uri.parse(url),
+        tag: _createMediaItem(songs[i], coverArtPath: coverArtPath),
+      ));
+    }
+    
+    // Use setAudioSources for all platforms
+    if (audioSources.isNotEmpty) {
+      await _player.setAudioSources(
+        audioSources,
+        initialIndex: startIndex,
+      );
     }
     
     // Update the current media item
@@ -282,107 +279,60 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
   
   @override
   Future<void> skipToNext() async {
+    print('[AudioHandler] skipToNext() - queue: ${_queue.length}, index: $_currentIndex');
     if (_queue.isEmpty) return;
     
-    if (Platform.isLinux) {
-      // Manual track change for Linux
-      if (_currentIndex < _queue.length - 1) {
-        _currentIndex++;
-        final song = _queue[_currentIndex];
-        final url = _api.getStreamUrl(song.id);
-        final coverArtPath = _currentIndex < _coverArtPaths.length ? _coverArtPaths[_currentIndex] : null;
-        
-        await _player.setAudioSource(AudioSource.uri(
-          Uri.parse(url),
-          tag: _createMediaItem(song, coverArtPath: coverArtPath),
-        ));
-        await _player.play();
-        
-        // Update media item
-        final mediaItems = queue.value;
-        if (_currentIndex < mediaItems.length) {
-          mediaItem.add(mediaItems[_currentIndex]);
-        }
-      } else if (_player.loopMode == LoopMode.all) {
-        // Loop back to beginning
-        _currentIndex = 0;
-        final song = _queue[0];
-        final url = _api.getStreamUrl(song.id);
-        final coverArtPath = _coverArtPaths.isNotEmpty ? _coverArtPaths[0] : null;
-        
-        await _player.setAudioSource(AudioSource.uri(
-          Uri.parse(url),
-          tag: _createMediaItem(song, coverArtPath: coverArtPath),
-        ));
-        await _player.play();
-        
-        // Update media item
-        final mediaItems = queue.value;
-        if (mediaItems.isNotEmpty) {
-          mediaItem.add(mediaItems[0]);
-        }
-      }
-    } else {
-      // Android with ConcatenatingAudioSource
-      if (_currentIndex < _queue.length - 1) {
-        await _player.seekToNext();
-      } else if (_player.loopMode == LoopMode.all) {
-        // Loop back to beginning if repeat all is enabled
-        await _player.seek(Duration.zero, index: 0);
-      }
+    // Can only go next if not at the last song
+    if (_currentIndex >= _queue.length - 1) {
+      print('[AudioHandler] Already at last song, cannot skip next');
+      return;
+    }
+    
+    // Remember the playing state
+    final wasPlaying = _player.playing;
+    
+    // Use the player's built-in seekToNext
+    await _player.seekToNext();
+    
+    // Preserve play state (seekToNext maintains play state, but just in case)
+    if (wasPlaying && !_player.playing) {
+      await _player.play();
     }
   }
   
   @override
   Future<void> skipToPrevious() async {
+    print('[AudioHandler] skipToPrevious() - queue: ${_queue.length}, index: $_currentIndex, position: ${_player.position}');
     if (_queue.isEmpty) return;
     
-    if (Platform.isLinux) {
-      // Manual track change for Linux
-      if (_currentIndex > 0) {
-        _currentIndex--;
-        final song = _queue[_currentIndex];
-        final url = _api.getStreamUrl(song.id);
-        final coverArtPath = _currentIndex < _coverArtPaths.length ? _coverArtPaths[_currentIndex] : null;
-        
-        await _player.setAudioSource(AudioSource.uri(
-          Uri.parse(url),
-          tag: _createMediaItem(song, coverArtPath: coverArtPath),
-        ));
-        await _player.play();
-        
-        // Update media item
-        final mediaItems = queue.value;
-        if (_currentIndex < mediaItems.length) {
-          mediaItem.add(mediaItems[_currentIndex]);
-        }
-      } else if (_player.loopMode == LoopMode.all) {
-        // Loop to end
-        _currentIndex = _queue.length - 1;
-        final song = _queue[_currentIndex];
-        final url = _api.getStreamUrl(song.id);
-        final coverArtPath = _currentIndex < _coverArtPaths.length ? _coverArtPaths[_currentIndex] : null;
-        
-        await _player.setAudioSource(AudioSource.uri(
-          Uri.parse(url),
-          tag: _createMediaItem(song, coverArtPath: coverArtPath),
-        ));
-        await _player.play();
-        
-        // Update media item
-        final mediaItems = queue.value;
-        if (_currentIndex < mediaItems.length) {
-          mediaItem.add(mediaItems[_currentIndex]);
-        }
-      }
-    } else {
-      // Android with ConcatenatingAudioSource
-      if (_currentIndex > 0) {
-        await _player.seekToPrevious();
-      } else if (_player.loopMode == LoopMode.all) {
-        // Loop to end if repeat all is enabled
-        await _player.seek(Duration.zero, index: _queue.length - 1);
-      }
+    // Check current position
+    const restartThreshold = Duration(seconds: 3);
+    final currentPosition = _player.position;
+    
+    // If more than 3 seconds in, restart current track
+    if (currentPosition > restartThreshold) {
+      print('[AudioHandler] Restarting current track');
+      await _player.seek(Duration.zero);
+      return;
+    }
+    
+    // If at first track, always restart
+    if (_currentIndex == 0) {
+      print('[AudioHandler] At first track, restarting');
+      await _player.seek(Duration.zero);
+      return;
+    }
+    
+    // Otherwise go to previous track
+    final wasPlaying = _player.playing;
+    print('[AudioHandler] Moving to previous track');
+    
+    // Use the player's built-in seekToPrevious
+    await _player.seekToPrevious();
+    
+    // Preserve play state (seekToPrevious maintains play state, but just in case)
+    if (wasPlaying && !_player.playing) {
+      await _player.play();
     }
   }
   
@@ -408,26 +358,14 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     if (index < 0 || index >= _queue.length) return;
     _currentIndex = index;
     
-    if (Platform.isLinux) {
-      // Manual track change for Linux
-      final song = _queue[index];
-      final url = _api.getStreamUrl(song.id);
-      final coverArtPath = index < _coverArtPaths.length ? _coverArtPaths[index] : null;
-      
-      await _player.setAudioSource(AudioSource.uri(
-        Uri.parse(url),
-        tag: _createMediaItem(song, coverArtPath: coverArtPath),
-      ));
-      await _player.play();
-      
-      // Update media item
-      final mediaItems = queue.value;
-      if (index < mediaItems.length) {
-        mediaItem.add(mediaItems[index]);
-      }
-    } else {
-      // Android with ConcatenatingAudioSource
-      await _player.seek(Duration.zero, index: index);
+    // Use seek with index for all platforms
+    await _player.seek(Duration.zero, index: index);
+    await _player.play();
+    
+    // Update media item
+    final mediaItems = queue.value;
+    if (index < mediaItems.length) {
+      mediaItem.add(mediaItems[index]);
     }
   }
   
