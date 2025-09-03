@@ -126,3 +126,24 @@ if(NOT CMAKE_BUILD_TYPE MATCHES "Debug")
   install(FILES "${AOT_LIBRARY}" DESTINATION "${INSTALL_BUNDLE_LIB_DIR}"
     COMPONENT Runtime)
 endif()
+
+# Install application icons
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/nhac-64.png"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/64x64/apps"
+  RENAME "nhac.png")
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/nhac-128.png"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/128x128/apps"
+  RENAME "nhac.png")
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/nhac-256.png"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/256x256/apps"
+  RENAME "nhac.png")
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/nhac-512.png"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/512x512/apps"
+  RENAME "nhac.png")
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/icons/nhac.svg"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/icons/hicolor/scalable/apps"
+  RENAME "nhac.svg")
+
+# Install desktop file
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/nhac.desktop"
+  DESTINATION "${CMAKE_INSTALL_PREFIX}/share/applications")
