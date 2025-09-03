@@ -17,6 +17,8 @@ finish-args:
   - --device=dri
   # MPRIS support
   - --own-name=org.mpris.MediaPlayer2.nhac
+  # DBus access for connectivity checking
+  - --socket=session-bus
   # Filesystem access for caching
   - --filesystem=xdg-cache
   - --filesystem=xdg-config
@@ -27,6 +29,18 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
 
 modules:
+  # SQLite3 for database/caching support
+  - name: sqlite3
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
+        sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --enable-threadsafe
+
   # PipeWire for modern audio support
   - name: pipewire
     buildsystem: meson
