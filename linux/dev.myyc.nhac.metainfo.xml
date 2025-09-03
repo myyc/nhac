@@ -60,14 +60,15 @@
   </provides>
   
   <releases>
-    <release version="1.0.0" date="2024-01-01">
+    <release version="1.0.0" date="2025-09-03">
       <description>
-        <p>Initial release</p>
+        <p>Initial release - A simple cross-platform Navidrome client</p>
         <ul>
-          <li>Basic music streaming from Navidrome</li>
-          <li>MPRIS support for media keys</li>
-          <li>Offline caching</li>
-          <li>Queue management</li>
+          <li>Music streaming and playback</li>
+          <li>Album/artist browsing and search</li>
+          <li>Android: Share to social media</li>
+          <li>Linux: MPRIS and Flatpak support</li>
+          <li>Experimental offline caching</li>
         </ul>
       </description>
     </release>
