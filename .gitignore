@@ -49,3 +49,6 @@ build-dir/
 repo/
 *.flatpak
 .flatpak-builder/
+
+# Release artifacts
+*.apk
