@@ -1,6 +1,6 @@
 app-id: dev.myyc.nhac
 runtime: org.freedesktop.Platform
-runtime-version: '24.08'
+runtime-version: "24.08"
 sdk: org.freedesktop.Sdk
 command: nhac
 finish-args:
@@ -27,48 +27,153 @@ finish-args:
   - --talk-name=org.freedesktop.Notifications
 
 modules:
-  # Flutter SDK
-  - name: flutter
-    buildsystem: simple
+  # PipeWire for modern audio support
+  - name: pipewire
+    buildsystem: meson
     sources:
       - type: archive
-        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
-        sha256: a7c82f551a9eae018e078f6bb186171e5a77920d35a3d75a61d9a593d0a9e4ae
-        dest: flutter-sdk
-    build-commands:
-      - export PATH=$PATH:$PWD/flutter-sdk/bin
-      - flutter config --no-analytics
-      - flutter doctor -v
+        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.7/pipewire-1.4.7.tar.gz
+        sha256: 9d54f025e1e7ae73b980a6c8be2e8e6387e24d554d58478d6495734ce1ee5a93
+    config-opts:
+      - -Dalsa=enabled
+      - -Djack=disabled
+      - -Dpipewire-alsa=enabled
+      - -Dgstreamer=disabled
+      - -Dsystemd=disabled
+      - -Ddocs=disabled
+      - -Dman=disabled
+      - -Dexamples=disabled
+      - -Dtests=disabled
+      - -Dsession-managers=[]
+      - -Dudev=disabled
+      - -Dudevrulesdir=disabled
 
-  # Application
+  # Python virtualenv with jinja2 for libplacebo build
+  - name: python3-jinja2-venv
+    buildsystem: simple
+    sources:
+      - type: file
+        url: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
+        sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+      - type: file
+        url: https://files.pythonhosted.org/packages/f3/f0/89e7aadfb3749d0f52234a0c8c7867877876e0a20b60e2188e9850794c17/MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: e17c96c14e19278594aa4841ec148115f9c7615a47382ecb6b82bd8fea3ab0c8
+    build-commands:
+      - python3 -m venv /app/jinja2-venv
+      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . jinja2-3.1.6-py3-none-any.whl
+
+  # libplacebo dependency for mpv
+  - name: libplacebo
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/haasn/libplacebo/archive/refs/tags/v7.351.0.tar.gz
+        sha256: 716954501d9b76e6906fddda66febc5886493d0673dd265ec1e6e52f4e5cd7c6
+    build-options:
+      env:
+        PATH: "/app/jinja2-venv/bin:/usr/bin:/bin"
+        PYTHONPATH: "/app/jinja2-venv/lib/python3.12/site-packages"
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dopengl=disabled
+      - -Dd3d11=disabled
+      - -Dlcms=disabled
+      - -Ddemos=false
+      - -Dtests=false
+      - -Dbench=false
+      - -Dfuzz=false
+
+  # libass dependency for mpv (required even for audio-only)
+  - name: libass
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.gz
+        sha256: a886b3b80867f437bc55cff3280a652bfa0d37b43d2aff39ddf3c4f288b8c5a8
+    config-opts:
+      - --disable-static
+      - --enable-shared
+
+  # Build libmpv from source (audio only)
+  - name: libmpv
+    buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.40.0.tar.gz
+        sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      # Audio only, disable all video
+      - -Dgl=disabled
+      - -Dvulkan=disabled
+      - -Dvaapi=disabled
+      - -Dvdpau=disabled
+      - -Dx11=disabled
+      - -Dwayland=disabled
+      - -Ddrm=disabled
+      - -Dgbm=disabled
+      - -Degl=disabled
+      # Enable audio support
+      - -Dalsa=enabled
+      - -Dpulse=enabled
+      - -Dpipewire=auto
+      # Disable features we don't need
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dzlib=disabled
+      - -Dlcms2=disabled
+      - -Dlibbluray=disabled
+      - -Ddvdnav=disabled
+      - -Dcdda=disabled
+      - -Duchardet=disabled
+      - -Drubberband=disabled
+      - -Dzimg=disabled
+      - -Dcaca=disabled
+      - -Dlibarchive=disabled
+      - -Dlibavdevice=disabled
+      - -Dsdl2=disabled
+
   - name: nhac
     buildsystem: simple
     sources:
       - type: dir
         path: .
+        # Only include the built application, not source
+        skip:
+          - .git
+          - .dart_tool
+          - .idea
+          - flatpak-flutter
+          - "*.md"
+          - "*.yaml"
+          - "*.yml"
+          - lib
+          - test
+          - android
+          - ios
+          - macos
+          - windows
+          - web
     build-commands:
-      # Set up Flutter
-      - export PATH=$PATH:/run/build/nhac/flutter-sdk/bin
-      - export PUB_CACHE=/run/build/nhac/.pub-cache
-      - flutter config --no-analytics
-      
-      # Build the application
-      - flutter build linux --release --dart-define=FLUTTER_BUILD_MODE=release
-      
-      # Install application
+      # Verify the app was pre-built
+      - test -f build/linux/x64/release/bundle/nhac || (echo "Error: Please run 'flutter build linux --release' first" && exit 1)
+
+      # Install the binary to /app/bin
       - install -Dm755 build/linux/x64/release/bundle/nhac /app/bin/nhac
-      
-      # Install libraries
-      - cp -r build/linux/x64/release/bundle/lib /app/
-      
-      # Install data
-      - cp -r build/linux/x64/release/bundle/data /app/
-      
+
+      # Copy lib and data directories maintaining structure
+      - cp -r build/linux/x64/release/bundle/lib /app/bin/
+      - cp -r build/linux/x64/release/bundle/data /app/bin/
+
       # Install desktop file
       - install -Dm644 linux/nhac.desktop /app/share/applications/dev.myyc.nhac.desktop
-      
+
       # Install icon
       - install -Dm644 linux/nhac.png /app/share/icons/hicolor/256x256/apps/dev.myyc.nhac.png
-      
+
       # Install AppStream metadata
       - install -Dm644 linux/dev.myyc.nhac.metainfo.xml /app/share/metainfo/dev.myyc.nhac.metainfo.xml
