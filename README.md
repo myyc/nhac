@@ -1,16 +1,28 @@
 # nhac
 
-A new Flutter project.
+A cross-platform navidrome/subsonic client. Pretty much everything has been developed with Claude code minus the icon (which is why it's horrible) and this README (likewise).
 
-## Getting Started
+You can do the following:
 
-This project is a starting point for a Flutter application.
+* Listen to your albums
+* Search in your library
+* Flex your tunes on social media
 
-A few resources to get you started if this is your first Flutter project:
+It works okay and looks quite nice.
 
-- [Lab: Write your first Flutter app](https://docs.flutter.dev/get-started/codelab)
-- [Cookbook: Useful Flutter samples](https://docs.flutter.dev/cookbook)
+Stuff that isn't available but is planned:
 
-For help getting started with Flutter development, view the
-[online documentation](https://docs.flutter.dev/), which offers tutorials,
-samples, guidance on mobile development, and a full API reference.
+* windows, macos builds - ios is harder for obvious reasons
+* proper offline support and better audio caching
+* keyboard navigation, there is little right now (type to search, escape to go back, spacebar to play/pause)
+
+Stuff that isn't planned:
+
+* playlists
+* any queue that isn't the current album
+
+# installing
+
+Grab one of the bundles.
+
+`apk`s are built the usual way (`flutter build apk`) and there is a `build-flatpak.sh` that needs a bit of foreplay but it does work. It probably builds in other platforms too but I haven't tested it yet.
