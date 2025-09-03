@@ -7,7 +7,6 @@ import 'dart:io';
 import '../models/song.dart';
 import '../services/navidrome_api.dart';
 import '../services/audio_cache_manager.dart';
-import '../services/mpris_service.dart';
 import '../services/audio_handler.dart';
 import '../services/cache_service.dart';
 import '../services/audio_file_cache_service.dart';
@@ -56,7 +55,7 @@ class PlayerProvider extends ChangeNotifier {
   
   PlayerProvider() : _audioPlayer = globalAudioPlayer {
     // Use the shared audio player instance from main.dart
-    if (Platform.isAndroid && audioHandler != null) {
+    if ((Platform.isAndroid || Platform.isLinux) && audioHandler != null) {
       _audioHandler = audioHandler;
     } else {
       _audioHandler = null;
@@ -74,11 +73,6 @@ class PlayerProvider extends ChangeNotifier {
       // Only update position if we've restored or if actively playing
       if (_hasRestoredPosition || _isPlaying) {
         _position = position;
-        
-        // Update MPRIS position
-        if (Platform.isLinux) {
-          MprisService.instance.updatePosition(position);
-        }
         
         notifyListeners();
         
@@ -109,11 +103,6 @@ class PlayerProvider extends ChangeNotifier {
     _audioPlayer.playerStateStream.listen((state) {
       _isPlaying = state.playing;
       
-      // Update MPRIS playback status
-      if (Platform.isLinux) {
-        MprisService.instance.updatePlaybackStatus(isPlaying: state.playing);
-      }
-      
       if (state.processingState == ProcessingState.completed) {
         next();
       }
@@ -141,8 +130,8 @@ class PlayerProvider extends ChangeNotifier {
       );
     }
     
-    // Update the audio handler with the proper API if on Android
-    if (Platform.isAndroid && _audioHandler != null) {
+    // Update the audio handler with the proper API if on Android or Linux
+    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
       _audioHandler!.updateApi(api);
     }
     // Now that we have the API, try to restore the audio if we have persisted state
@@ -170,13 +159,8 @@ class PlayerProvider extends ChangeNotifier {
         // Extract colors from album art
         await _extractColorsFromCurrentSong();
         
-        // Update MPRIS metadata
-        if (Platform.isLinux) {
-          MprisService.instance.updateMetadata(_currentSong!);
-        }
-        
-        // Update audio handler for Android media session with cached art
-        if (Platform.isAndroid && _audioHandler != null) {
+        // Update audio handler for Android/Linux media session with cached art
+        if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
           await _audioHandler!.updateQueueFromSongs(
             [_currentSong!], 
             startIndex: 0,
@@ -281,13 +265,8 @@ class PlayerProvider extends ChangeNotifier {
     // Extract colors from album art
     await _extractColorsFromCurrentSong();
     
-    // Update MPRIS metadata
-    if (Platform.isLinux) {
-      MprisService.instance.updateMetadata(song);
-    }
-    
-    // Update audio handler for Android media session with cached art
-    if (Platform.isAndroid && _audioHandler != null) {
+    // Update audio handler for Android/Linux media session with cached art
+    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
       await _audioHandler!.updateQueueFromSongs(
         [song], 
         startIndex: 0,
@@ -369,19 +348,14 @@ class PlayerProvider extends ChangeNotifier {
           }
         }
         // Update handler with all cached paths if still playing same queue
-        if (Platform.isAndroid && _audioHandler != null && _queue == songs) {
+        if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null && _queue == songs) {
           await _audioHandler!.updateCoverArtPaths(coverArtPaths);
         }
       });
     }
     
-    // Update MPRIS metadata
-    if (Platform.isLinux) {
-      MprisService.instance.updateMetadata(_currentSong);
-    }
-    
-    // Update audio handler for Android media session with current cached art
-    if (Platform.isAndroid && _audioHandler != null) {
+    // Update audio handler for Android/Linux media session with current cached art
+    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
       await _audioHandler!.updateQueueFromSongs(
         songs, 
         startIndex: startIndex,
@@ -468,8 +442,8 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> next() async {
     if (_queue.isEmpty || _api == null) return;
     
-    // For Android, use the audio handler to skip to next
-    if (Platform.isAndroid && _audioHandler != null) {
+    // For Android/Linux, use the audio handler to skip to next
+    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
       await _audioHandler!.skipToNext();
       // The handler will update the player and media item
       return;
@@ -494,11 +468,6 @@ class PlayerProvider extends ChangeNotifier {
       
       // Extract colors from album art
       await _extractColorsFromCurrentSong();
-      
-      // Update MPRIS metadata
-      if (Platform.isLinux) {
-        MprisService.instance.updateMetadata(_currentSong);
-      }
       
       // Try to use preloaded player for minimal gap
       final cachedPlayer = _cacheManager.getCachedPlayer(_currentSong!.id);
@@ -551,8 +520,8 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> previous() async {
     if (_queue.isEmpty || _api == null) return;
     
-    // For Android, use the audio handler to skip to previous
-    if (Platform.isAndroid && _audioHandler != null) {
+    // For Android/Linux, use the audio handler to skip to previous
+    if ((Platform.isAndroid || Platform.isLinux) && _audioHandler != null) {
       await _audioHandler!.skipToPrevious();
       // The handler will update the player and media item
       return;
@@ -577,11 +546,6 @@ class PlayerProvider extends ChangeNotifier {
       
       // Extract colors from album art
       await _extractColorsFromCurrentSong();
-      
-      // Update MPRIS metadata
-      if (Platform.isLinux) {
-        MprisService.instance.updateMetadata(_currentSong);
-      }
       
       // Check for cached audio file first
       String? audioSource;
@@ -791,11 +755,6 @@ class PlayerProvider extends ChangeNotifier {
           
           // Extract colors from album art for the new track
           _extractColorsFromCurrentSong();
-          
-          // Update MPRIS metadata
-          if (Platform.isLinux) {
-            MprisService.instance.updateMetadata(_currentSong);
-          }
           
           notifyListeners();
           _savePlayerState();

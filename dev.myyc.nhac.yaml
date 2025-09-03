@@ -1,0 +1,74 @@
+app-id: dev.myyc.nhac
+runtime: org.freedesktop.Platform
+runtime-version: '24.08'
+sdk: org.freedesktop.Sdk
+command: nhac
+finish-args:
+  # Network access for streaming
+  - --share=network
+  # Audio playback
+  - --socket=pulseaudio
+  # X11 + XShm access
+  - --socket=x11
+  - --share=ipc
+  # Wayland access
+  - --socket=wayland
+  # OpenGL access for rendering
+  - --device=dri
+  # MPRIS support
+  - --own-name=org.mpris.MediaPlayer2.nhac
+  # Filesystem access for caching
+  - --filesystem=xdg-cache
+  - --filesystem=xdg-config
+  # For window decorations
+  - --talk-name=org.freedesktop.portal.Desktop
+  - --talk-name=org.freedesktop.portal.FileChooser
+  # For notifications
+  - --talk-name=org.freedesktop.Notifications
+
+modules:
+  # Flutter SDK
+  - name: flutter
+    buildsystem: simple
+    sources:
+      - type: archive
+        url: https://storage.googleapis.com/flutter_infra_release/releases/stable/linux/flutter_linux_3.24.5-stable.tar.xz
+        sha256: a7c82f551a9eae018e078f6bb186171e5a77920d35a3d75a61d9a593d0a9e4ae
+        dest: flutter-sdk
+    build-commands:
+      - export PATH=$PATH:$PWD/flutter-sdk/bin
+      - flutter config --no-analytics
+      - flutter doctor -v
+
+  # Application
+  - name: nhac
+    buildsystem: simple
+    sources:
+      - type: dir
+        path: .
+    build-commands:
+      # Set up Flutter
+      - export PATH=$PATH:/run/build/nhac/flutter-sdk/bin
+      - export PUB_CACHE=/run/build/nhac/.pub-cache
+      - flutter config --no-analytics
+      
+      # Build the application
+      - flutter build linux --release --dart-define=FLUTTER_BUILD_MODE=release
+      
+      # Install application
+      - install -Dm755 build/linux/x64/release/bundle/nhac /app/bin/nhac
+      
+      # Install libraries
+      - cp -r build/linux/x64/release/bundle/lib /app/
+      
+      # Install data
+      - cp -r build/linux/x64/release/bundle/data /app/
+      
+      # Install desktop file
+      - install -Dm644 linux/nhac.desktop /app/share/applications/dev.myyc.nhac.desktop
+      
+      # Install icon
+      - install -Dm644 linux/nhac.png /app/share/icons/hicolor/256x256/apps/dev.myyc.nhac.png
+      
+      # Install AppStream metadata
+      - install -Dm644 linux/dev.myyc.nhac.metainfo.xml /app/share/metainfo/dev.myyc.nhac.metainfo.xml
