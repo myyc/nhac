@@ -61,7 +61,7 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
                 width: widget.showMenuButton ? 112 : 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: Theme.of(context).colorScheme.surface.withOpacity(0.95),
+                  color: Colors.transparent,
                   borderRadius: const BorderRadius.only(
                     bottomLeft: Radius.circular(8),
                   ),

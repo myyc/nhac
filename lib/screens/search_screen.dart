@@ -10,6 +10,7 @@ import '../providers/network_provider.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
 import '../models/song.dart';
+import '../widgets/custom_window_frame.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
 
@@ -363,7 +364,7 @@ class _SearchScreenState extends State<SearchScreen> {
       body: content,
     );
     
-    // For desktop, add ESC key handling
+    // For desktop, add ESC key handling and CustomWindowFrame
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       return RawKeyboardListener(
         focusNode: FocusNode(),
@@ -375,7 +376,9 @@ class _SearchScreenState extends State<SearchScreen> {
             widget.onClose?.call();
           }
         },
-        child: scaffold,
+        child: CustomWindowFrame(
+          child: scaffold,
+        ),
       );
     }
     

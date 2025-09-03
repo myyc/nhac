@@ -9,6 +9,7 @@ import '../models/album.dart';
 import '../models/song.dart';
 import '../models/artist.dart';
 import '../widgets/cached_cover_image.dart';
+import '../widgets/artistic_background.dart';
 import 'artist_detail_screen.dart';
 import '../widgets/custom_window_frame.dart';
 import '../widgets/now_playing_bar.dart';
@@ -74,6 +75,26 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     }
   }
 
+  // Calculate if primary color has enough contrast with primaryContainer
+  Color _getPlayingTrackColor(BuildContext context) {
+    final theme = Theme.of(context);
+    final primary = theme.colorScheme.primary;
+    final primaryContainer = theme.colorScheme.primaryContainer;
+    
+    // Calculate luminance difference
+    final primaryLuminance = primary.computeLuminance();
+    final containerLuminance = primaryContainer.computeLuminance();
+    final luminanceDiff = (primaryLuminance - containerLuminance).abs();
+    
+    // If colors are too similar (low contrast), use onSurface instead
+    if (luminanceDiff < 0.2) {
+      return theme.colorScheme.onSurface;
+    }
+    
+    // Otherwise use primary for colorful highlight
+    return primary;
+  }
+
   @override
   Widget build(BuildContext context) {
     final api = context.read<AuthProvider>().api;
@@ -112,46 +133,61 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      // Album cover
-                      Container(
-                        height: 300,
-                        width: double.infinity,
-                        child: widget.album.coverArt != null
-                            ? Stack(
-                                fit: StackFit.expand,
-                                children: [
-                                  CachedCoverImage(
-                                    key: ValueKey('album_${widget.album.id}_${widget.album.coverArt}'),
-                                    coverArtId: widget.album.coverArt,
-                                    size: 600,
-                                  ),
-                                  Container(
-                                    decoration: BoxDecoration(
-                                      gradient: LinearGradient(
-                                        begin: Alignment.topCenter,
-                                        end: Alignment.bottomCenter,
-                                        colors: [
-                                          Colors.transparent,
-                                          Colors.black.withOpacity(0.3),
-                                        ],
-                                      ),
-                                    ),
+                      // Album cover with artistic background
+                      Stack(
+                        children: [
+                          // Artistic background effect
+                          ArtisticBackground(
+                            coverArtId: widget.album.coverArt,
+                            albumId: widget.album.id,
+                            height: 300,
+                          ),
+                          // Album cover overlay
+                          Container(
+                            height: 300,
+                            width: double.infinity,
+                            alignment: Alignment.center,
+                            child: Container(
+                              width: 200,
+                              height: 200,
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(8),
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.3),
+                                    blurRadius: 20,
+                                    offset: const Offset(0, 10),
                                   ),
                                 ],
-                              )
-                            : Container(
-                                color: Theme.of(context).colorScheme.surfaceVariant,
-                                child: const Icon(Icons.album, size: 100),
                               ),
+                              child: ClipRRect(
+                                borderRadius: BorderRadius.circular(8),
+                                child: widget.album.coverArt != null
+                                    ? CachedCoverImage(
+                                        key: ValueKey('album_${widget.album.id}_${widget.album.coverArt}'),
+                                        coverArtId: widget.album.coverArt,
+                                        size: 400,
+                                      )
+                                    : Container(
+                                        color: Theme.of(context).colorScheme.surfaceVariant,
+                                        child: const Icon(Icons.album, size: 80),
+                                      ),
+                              ),
+                            ),
+                          ),
+                        ],
                       ),
                       
                       // Album info
-                      Padding(
-                        padding: const EdgeInsets.all(16),
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            MouseRegion(
+                      Container(
+                        width: double.infinity,
+                        color: Theme.of(context).colorScheme.surface,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              MouseRegion(
                               cursor: widget.album.artistId != null ? SystemMouseCursors.click : MouseCursor.defer,
                               child: GestureDetector(
                                 onTap: widget.album.artistId != null ? () {
@@ -201,6 +237,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           ],
                         ),
                       ),
+                    ),
                       
                       // Song list
                       if (_songs != null)
@@ -278,6 +315,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                               for (final song in discSongs) {
                                 final isCurrentSong = playerProvider.currentSong?.id == song.id;
                                 final isPlaying = isCurrentSong && playerProvider.isPlaying;
+                                final playingTrackColor = isCurrentSong ? _getPlayingTrackColor(context) : null;
                                 
                                 widgets.add(
                                   Container(
@@ -291,7 +329,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                             ? Icon(
                                                 isPlaying ? Icons.volume_up : Icons.pause_circle_outline,
                                                 size: 20,
-                                                color: Theme.of(context).colorScheme.primary,
+                                                color: playingTrackColor,
                                               )
                                             : Text(
                                                 song.track?.toString() ?? '',
@@ -302,26 +340,20 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                       title: Text(
                                         song.title,
                                         style: TextStyle(
-                                          color: isCurrentSong 
-                                              ? Theme.of(context).colorScheme.primary 
-                                              : null,
+                                          color: playingTrackColor,
                                           fontWeight: isCurrentSong ? FontWeight.bold : null,
                                         ),
                                       ),
                                       subtitle: Text(
                                         song.artist ?? 'Unknown Artist',
                                         style: TextStyle(
-                                          color: isCurrentSong 
-                                              ? Theme.of(context).colorScheme.primary.withOpacity(0.8)
-                                              : null,
+                                          color: playingTrackColor?.withOpacity(0.8),
                                         ),
                                       ),
                                       trailing: Text(
                                         song.formattedDuration,
                                         style: TextStyle(
-                                          color: isCurrentSong 
-                                              ? Theme.of(context).colorScheme.primary 
-                                              : null,
+                                          color: playingTrackColor,
                                         ),
                                       ),
                                       onTap: () {

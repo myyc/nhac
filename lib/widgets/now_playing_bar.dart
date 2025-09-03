@@ -8,6 +8,29 @@ import 'cached_cover_image.dart';
 class NowPlayingBar extends StatelessWidget {
   const NowPlayingBar({super.key});
 
+  // Calculate appropriate icon color based on HSL values
+  Color _getContrastIconColor(Color backgroundColor) {
+    final hslColor = HSLColor.fromColor(backgroundColor);
+    final lightness = hslColor.lightness;
+    final saturation = hslColor.saturation;
+    
+    // For very light colors with low saturation (near white/gray)
+    // Use dark icons
+    if (lightness > 0.7 && saturation < 0.3) {
+      return Colors.black87;
+    }
+    
+    // For very light colors with some saturation (pastel colors)
+    // Also use dark icons
+    if (lightness > 0.8) {
+      return Colors.black87;
+    }
+    
+    // For all other colors (including bright saturated colors like red)
+    // Use white icons
+    return Colors.white;
+  }
+
   @override
   Widget build(BuildContext context) {
     return Consumer<PlayerProvider>(
@@ -126,7 +149,9 @@ class NowPlayingBar extends StatelessWidget {
                                   playerProvider.isPlaying 
                                       ? Icons.pause 
                                       : Icons.play_arrow,
-                                  color: Colors.white,
+                                  color: _getContrastIconColor(
+                                    extractedColors?.primary ?? theme.colorScheme.primary
+                                  ),
                                 ),
                                 padding: const EdgeInsets.all(8),
                                 onPressed: playerProvider.togglePlayPause,

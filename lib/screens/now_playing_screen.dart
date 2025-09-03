@@ -16,6 +16,29 @@ import 'album_detail_screen.dart';
 class NowPlayingScreen extends StatelessWidget {
   const NowPlayingScreen({super.key});
 
+  // Calculate appropriate icon color based on HSL values
+  Color _getContrastIconColor(Color backgroundColor) {
+    final hslColor = HSLColor.fromColor(backgroundColor);
+    final lightness = hslColor.lightness;
+    final saturation = hslColor.saturation;
+    
+    // For very light colors with low saturation (near white/gray)
+    // Use dark icons
+    if (lightness > 0.7 && saturation < 0.3) {
+      return Colors.black87;
+    }
+    
+    // For very light colors with some saturation (pastel colors)
+    // Also use dark icons
+    if (lightness > 0.8) {
+      return Colors.black87;
+    }
+    
+    // For all other colors (including bright saturated colors like red)
+    // Use white icons
+    return Colors.white;
+  }
+
   String _formatDuration(Duration duration) {
     final minutes = duration.inMinutes;
     final seconds = duration.inSeconds.remainder(60);
@@ -196,15 +219,33 @@ class NowPlayingScreen extends StatelessWidget {
                           color: Colors.transparent,
                           child: InkWell(
                             borderRadius: BorderRadius.circular(4),
-                            onTap: song.albumId != null ? () {
-                              // Create a minimal Album object for navigation
-                              final album = Album(
-                                id: song.albumId!,
-                                name: song.album!,
-                                artist: song.artist,
-                                artistId: song.artistId,
-                                coverArt: song.coverArt,
-                              );
+                            onTap: song.albumId != null ? () async {
+                              // Try to get full album from cache first
+                              Album album;
+                              try {
+                                final cacheProvider = context.read<CacheProvider>();
+                                final albums = await cacheProvider.getAlbums();
+                                album = albums.firstWhere(
+                                  (a) => a.id == song.albumId,
+                                  orElse: () => Album(
+                                    id: song.albumId!,
+                                    name: song.album!,
+                                    artist: song.artist,
+                                    artistId: song.artistId,
+                                    coverArt: song.coverArt,
+                                  ),
+                                );
+                              } catch (e) {
+                                // If error, create minimal Album object
+                                album = Album(
+                                  id: song.albumId!,
+                                  name: song.album!,
+                                  artist: song.artist,
+                                  artistId: song.artistId,
+                                  coverArt: song.coverArt,
+                                );
+                              }
+                              
                               Navigator.push(
                                 context,
                                 MaterialPageRoute(
@@ -292,7 +333,7 @@ class NowPlayingScreen extends StatelessWidget {
                           playerProvider.isPlaying 
                               ? Icons.pause 
                               : Icons.play_arrow,
-                          color: Theme.of(context).colorScheme.onPrimary,
+                          color: _getContrastIconColor(Theme.of(context).colorScheme.primary),
                         ),
                         iconSize: 48,
                         padding: const EdgeInsets.all(16),
