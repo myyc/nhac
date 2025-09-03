@@ -56,7 +56,7 @@ class AggressiveCacheService {
   void _onNetworkChanged() {
     if (networkProvider.isOnWifi) {
       // Switched to WiFi - sync immediately
-      debugPrint('[AggressiveCache] WiFi detected - starting aggressive sync');
+      if (kDebugMode) debugPrint('[AggressiveCache] WiFi detected - starting aggressive sync');
       _startPeriodicSync();
       smartSync();
     }
@@ -77,17 +77,17 @@ class AggressiveCacheService {
         final needsFull = await _checkIfFullSyncNeeded();
         
         if (needsFull) {
-          debugPrint('[AggressiveCache] Starting FULL library sync');
+          if (kDebugMode) debugPrint('[AggressiveCache] Starting FULL library sync');
           await _syncEverything();
           await _downloadAllCoverArt();
         } else {
-          debugPrint('[AggressiveCache] Quick sync - checking for changes');
+          if (kDebugMode) debugPrint('[AggressiveCache] Quick sync - checking for changes');
           await _syncRecentlyAdded(size: 100);
           await _downloadMissingCoverArt();
         }
       }
     } catch (e) {
-      debugPrint('[AggressiveCache] Sync error: $e');
+      if (kDebugMode) debugPrint('[AggressiveCache] Sync error: $e');
     } finally {
       _isSyncing = false;
     }
@@ -98,14 +98,14 @@ class AggressiveCacheService {
       // Check if cache is empty
       final cachedAlbums = await DatabaseHelper.getAlbums();
       if (cachedAlbums.isEmpty) {
-        debugPrint('[AggressiveCache] Cache empty - need full sync');
+        if (kDebugMode) debugPrint('[AggressiveCache] Cache empty - need full sync');
         return true;
       }
       
       // Check if last full sync was too long ago
       final needsSync = await DatabaseHelper.needsSync('full_library', _fullSyncInterval);
       if (needsSync) {
-        debugPrint('[AggressiveCache] Haven\'t synced in 24h - need full sync');
+        if (kDebugMode) debugPrint('[AggressiveCache] Haven\'t synced in 24h - need full sync');
         return true;
       }
       
@@ -122,14 +122,14 @@ class AggressiveCacheService {
         }
         
         if (newCount > 5) {
-          debugPrint('[AggressiveCache] Found $newCount new albums - need full sync');
+          if (kDebugMode) debugPrint('[AggressiveCache] Found $newCount new albums - need full sync');
           return true;
         }
       }
       
       return false;
     } catch (e) {
-      debugPrint('[AggressiveCache] Error checking sync need: $e');
+      if (kDebugMode) debugPrint('[AggressiveCache] Error checking sync need: $e');
       return true; // When in doubt, sync
     }
   }
@@ -140,12 +140,12 @@ class AggressiveCacheService {
     
     try {
       // First, get all artists
-      debugPrint('[AggressiveCache] Fetching all artists...');
+      if (kDebugMode) debugPrint('[AggressiveCache] Fetching all artists...');
       final artists = await api.getArtists();
       await DatabaseHelper.insertArtists(artists);
       
       // Get ALL albums - no limit!
-      debugPrint('[AggressiveCache] Fetching all albums...');
+      if (kDebugMode) debugPrint('[AggressiveCache] Fetching all albums...');
       final allAlbums = <Album>[];
       int offset = 0;
       const batchSize = 100;
@@ -162,22 +162,22 @@ class AggressiveCacheService {
         allAlbums.addAll(albums);
         await DatabaseHelper.insertAlbums(albums);
         
-        debugPrint('[AggressiveCache] Fetched ${allAlbums.length} albums so far...');
+        if (kDebugMode) debugPrint('[AggressiveCache] Fetched ${allAlbums.length} albums so far...');
         
         offset += batchSize;
         
         // Prevent infinite loop
         if (offset > 10000) {
-          debugPrint('[AggressiveCache] Safety limit reached');
+          if (kDebugMode) debugPrint('[AggressiveCache] Safety limit reached');
           break;
         }
       }
       
-      debugPrint('[AggressiveCache] Total albums: ${allAlbums.length}');
+      if (kDebugMode) debugPrint('[AggressiveCache] Total albums: ${allAlbums.length}');
       _syncTotal = allAlbums.length;
       
       // Now fetch all songs for each album
-      debugPrint('[AggressiveCache] Fetching songs for all albums...');
+      if (kDebugMode) debugPrint('[AggressiveCache] Fetching songs for all albums...');
       for (int i = 0; i < allAlbums.length; i++) {
         final album = allAlbums[i];
         
@@ -201,7 +201,7 @@ class AggressiveCacheService {
             await Future.delayed(const Duration(milliseconds: 100));
           }
         } catch (e) {
-          debugPrint('[AggressiveCache] Error fetching album ${album.id}: $e');
+          if (kDebugMode) debugPrint('[AggressiveCache] Error fetching album ${album.id}: $e');
         }
       }
       
@@ -218,10 +218,10 @@ class AggressiveCacheService {
         );
       }
       
-      debugPrint('[AggressiveCache] Full sync completed!');
+      if (kDebugMode) debugPrint('[AggressiveCache] Full sync completed!');
       
     } catch (e) {
-      debugPrint('[AggressiveCache] Error during full sync: $e');
+      if (kDebugMode) debugPrint('[AggressiveCache] Error during full sync: $e');
       rethrow;
     }
   }
@@ -245,7 +245,7 @@ class AggressiveCacheService {
               await DatabaseHelper.insertSongs(songs);
             }
           } catch (e) {
-            debugPrint('[AggressiveCache] Error fetching songs for ${album.id}: $e');
+            if (kDebugMode) debugPrint('[AggressiveCache] Error fetching songs for ${album.id}: $e');
           }
         }
         
@@ -261,14 +261,14 @@ class AggressiveCacheService {
       );
       
     } catch (e) {
-      debugPrint('[AggressiveCache] Error syncing recently added: $e');
+      if (kDebugMode) debugPrint('[AggressiveCache] Error syncing recently added: $e');
     }
   }
   
   Future<void> _downloadAllCoverArt() async {
     if (!networkProvider.isOnWifi) return;
     
-    debugPrint('[AggressiveCache] Starting cover art download...');
+    if (kDebugMode) debugPrint('[AggressiveCache] Starting cover art download...');
     
     try {
       final albums = await DatabaseHelper.getAlbums();
@@ -289,7 +289,7 @@ class AggressiveCacheService {
       
       for (int i = 0; i < albums.length; i += batchSize) {
         if (!networkProvider.isOnWifi) {
-          debugPrint('[AggressiveCache] Lost WiFi - stopping cover download');
+          if (kDebugMode) debugPrint('[AggressiveCache] Lost WiFi - stopping cover download');
           break;
         }
         
@@ -323,10 +323,10 @@ class AggressiveCacheService {
         await Future.delayed(const Duration(milliseconds: 200));
       }
       
-      debugPrint('[AggressiveCache] Cover art download completed: $completed/$total');
+      if (kDebugMode) debugPrint('[AggressiveCache] Cover art download completed: $completed/$total');
       
     } catch (e) {
-      debugPrint('[AggressiveCache] Error downloading cover art: $e');
+      if (kDebugMode) debugPrint('[AggressiveCache] Error downloading cover art: $e');
     }
   }
   
@@ -354,11 +354,11 @@ class AggressiveCacheService {
       }
       
       if (downloaded > 0) {
-        debugPrint('[AggressiveCache] Downloaded $downloaded missing covers');
+        if (kDebugMode) debugPrint('[AggressiveCache] Downloaded $downloaded missing covers');
       }
       
     } catch (e) {
-      debugPrint('[AggressiveCache] Error downloading missing covers: $e');
+      if (kDebugMode) debugPrint('[AggressiveCache] Error downloading missing covers: $e');
     }
   }
   
