@@ -1,6 +1,7 @@
 #include "my_application.h"
 
 #include <flutter_linux/flutter_linux.h>
+#include <bitsdojo_window_linux/bitsdojo_window_plugin.h>
 #ifdef GDK_WINDOWING_X11
 #include <gdk/gdkx.h>
 #endif
@@ -29,7 +30,7 @@ static void my_application_activate(GApplication* application) {
   // Don't use GTK header bar - we'll use a custom window frame from Flutter
   gtk_window_set_title(window, "nhac");
 
-  gtk_window_set_default_size(window, 1280, 720);
+  //gtk_window_set_default_size(window, 1280, 720);  // Commented out - size is set by bitsdojo_window
 
   g_autoptr(FlDartProject) project = fl_dart_project_new();
   fl_dart_project_set_dart_entrypoint_arguments(project, self->dart_entrypoint_arguments);
@@ -39,6 +40,11 @@ static void my_application_activate(GApplication* application) {
   // Background defaults to black, override it here if necessary, e.g. #00000000 for transparent.
   gdk_rgba_parse(&background_color, "#000000");
   fl_view_set_background_color(view, &background_color);
+  
+  // Configure bitsdojo_window for custom frame
+  auto bdw = bitsdojo_window_from(window);
+  bdw->setCustomFrame(true);
+  
   gtk_widget_show(GTK_WIDGET(view));
   gtk_container_add(GTK_CONTAINER(window), GTK_WIDGET(view));
 

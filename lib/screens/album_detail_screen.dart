@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
@@ -134,14 +135,16 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       // Album cover with artistic background
-                      Stack(
-                        children: [
-                          // Artistic background effect
-                          ArtisticBackground(
-                            coverArtId: widget.album.coverArt,
-                            albumId: widget.album.id,
-                            height: 300,
-                          ),
+                      (Platform.isWindows || Platform.isLinux || Platform.isMacOS) 
+                          ? MoveWindow(
+                              child: Stack(
+                              children: [
+                                // Artistic background effect
+                                ArtisticBackground(
+                                  coverArtId: widget.album.coverArt,
+                                  albumId: widget.album.id,
+                                  height: 300,
+                                ),
                           // Album cover overlay
                           Container(
                             height: 300,
@@ -176,7 +179,51 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                             ),
                           ),
                         ],
-                      ),
+                        ),
+                      )
+                          : Stack(
+                              children: [
+                                // Artistic background effect
+                                ArtisticBackground(
+                                  coverArtId: widget.album.coverArt,
+                                  albumId: widget.album.id,
+                                  height: 300,
+                                ),
+                                // Album cover overlay
+                                Container(
+                                  height: 300,
+                                  width: double.infinity,
+                                  alignment: Alignment.center,
+                                  child: Container(
+                                    width: 200,
+                                    height: 200,
+                                    decoration: BoxDecoration(
+                                      borderRadius: BorderRadius.circular(8),
+                                      boxShadow: [
+                                        BoxShadow(
+                                          color: Colors.black.withOpacity(0.3),
+                                          blurRadius: 20,
+                                          offset: const Offset(0, 10),
+                                        ),
+                                      ],
+                                    ),
+                                    child: ClipRRect(
+                                      borderRadius: BorderRadius.circular(8),
+                                      child: widget.album.coverArt != null
+                                          ? CachedCoverImage(
+                                              key: ValueKey('album_${widget.album.id}_${widget.album.coverArt}'),
+                                              coverArtId: widget.album.coverArt,
+                                              size: 400,
+                                            )
+                                          : Container(
+                                              color: Theme.of(context).colorScheme.surfaceVariant,
+                                              child: const Icon(Icons.album, size: 80),
+                                            ),
+                                    ),
+                                  ),
+                                ),
+                              ],
+                            ),
                       
                       // Album info
                       Container(

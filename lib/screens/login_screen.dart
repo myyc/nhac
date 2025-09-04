@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:window_manager/window_manager.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -50,26 +50,23 @@ class _LoginScreenState extends State<LoginScreen> {
       return const SizedBox.shrink();
     }
     
-    return GestureDetector(
-      onPanStart: (_) => windowManager.startDragging(),
-      onDoubleTap: () async {
-        final isMaximized = await windowManager.isMaximized();
-        if (isMaximized) {
-          await windowManager.unmaximize();
-        } else {
-          await windowManager.maximize();
-        }
-      },
+    return WindowTitleBarBox(
       child: Container(
         height: 48,
         color: Theme.of(context).colorScheme.surface,
-        alignment: Alignment.centerRight,
-        padding: const EdgeInsets.only(right: 8),
-        child: IconButton(
-          icon: const Icon(Icons.close),
-          onPressed: () => windowManager.close(),
-          iconSize: 18,
-          color: Colors.red,
+        child: Row(
+          children: [
+            Expanded(
+              child: MoveWindow(),
+            ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              onPressed: () => appWindow.close(),
+              iconSize: 18,
+              color: Colors.red,
+            ),
+            const SizedBox(width: 8),
+          ],
         ),
       ),
     );

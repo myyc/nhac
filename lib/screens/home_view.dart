@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
@@ -218,34 +219,12 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
       children: [
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                title,
-                style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.w700,
-                  letterSpacing: -0.5,
-                ),
-              ),
-              TextButton(
-                onPressed: () {
-                  // TODO: Navigate to full section view
-                },
-                style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                  minimumSize: Size.zero,
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-                child: Text(
-                  'View all',
-                  style: Theme.of(context).textTheme.labelMedium?.copyWith(
-                    color: Theme.of(context).colorScheme.primary,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ),
-            ],
+          child: Text(
+            title,
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+              fontWeight: FontWeight.w700,
+              letterSpacing: -0.5,
+            ),
           ),
         ),
         const SizedBox(height: 8),
@@ -315,6 +294,11 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
           const SizedBox(height: 80), // Space for player bar
         ],
       );
+    
+    // Wrap the entire ListView with MoveWindow for desktop
+    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+      listView = MoveWindow(child: listView);
+    }
     
     // On mobile, add pull-to-search with elastic animation
     if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
