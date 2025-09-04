@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io' show Platform;
@@ -190,7 +191,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         ? MediaQuery.of(context).padding.top + 16 
         : 16.0;
     
-    Widget content = GridView.builder(
+    Widget gridView = GridView.builder(
       padding: EdgeInsets.fromLTRB(16, topPadding, 16, 16),
       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
         maxCrossAxisExtent: 200,
@@ -201,6 +202,10 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
       itemCount: allAlbums.length,
       itemBuilder: (context, index) => _buildAlbumCard(allAlbums[index]),
     );
+    
+    Widget content = (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+        ? MoveWindow(child: gridView)
+        : gridView;
     
     // On mobile, add pull-to-search with elastic animation
     if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {

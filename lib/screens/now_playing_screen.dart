@@ -1,6 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:bitsdojo_window/bitsdojo_window.dart';
 import '../widgets/custom_window_frame.dart';
 import 'package:provider/provider.dart';
 import '../providers/cache_provider.dart';
@@ -93,74 +94,145 @@ class NowPlayingScreen extends StatelessWidget {
             child: Column(
               children: [
                 Expanded(
-                  child: Center(
-                    child: Container(
-                      constraints: const BoxConstraints(maxWidth: 360, maxHeight: 360),
-                      decoration: BoxDecoration(
-                        borderRadius: BorderRadius.circular(20),
-                        color: Theme.of(context).colorScheme.surfaceVariant,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.15),
-                            blurRadius: 30,
-                            offset: const Offset(0, 15),
-                            spreadRadius: -5,
-                          ),
-                          BoxShadow(
-                            color: Colors.black.withOpacity(0.08),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
-                          ),
-                        ],
-                      ),
-                      child: CachedCoverImage(
-                        key: ValueKey('playing_${song.id}_${song.coverArt}'),
-                        coverArtId: song.coverArt,
-                        size: 800,
-                        borderRadius: BorderRadius.circular(20),
-                        placeholder: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: Theme.of(context).colorScheme.surfaceVariant,
-                          ),
+                  child: (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+                      ? MoveWindow(
                           child: Center(
-                            child: Column(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              children: [
-                                Icon(
-                                  Icons.music_note,
-                                  size: 60,
-                                  color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
-                                ),
-                                const SizedBox(height: 16),
-                                SizedBox(
-                                  width: 24,
-                                  height: 24,
-                                  child: CircularProgressIndicator(
-                                    strokeWidth: 2,
-                                    color: Theme.of(context).colorScheme.primary,
+                            child: Container(
+                              constraints: const BoxConstraints(maxWidth: 360, maxHeight: 360),
+                              decoration: BoxDecoration(
+                                borderRadius: BorderRadius.circular(20),
+                                color: Theme.of(context).colorScheme.surfaceVariant,
+                                boxShadow: [
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.15),
+                                    blurRadius: 30,
+                                    offset: const Offset(0, 15),
+                                    spreadRadius: -5,
                                   ),
+                                  BoxShadow(
+                                    color: Colors.black.withOpacity(0.08),
+                                    blurRadius: 10,
+                                    offset: const Offset(0, 5),
+                                  ),
+                                ],
+                              ),
+                              child: CachedCoverImage(
+                                key: ValueKey('playing_${song.id}_${song.coverArt}'),
+                                coverArtId: song.coverArt,
+                                size: 800,
+                                borderRadius: BorderRadius.circular(20),
+                                placeholder: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    color: Theme.of(context).colorScheme.surfaceVariant,
+                                  ),
+                                  child: Center(
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: [
+                                        Icon(
+                                          Icons.music_note,
+                                          size: 60,
+                                          color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                        ),
+                                        const SizedBox(height: 16),
+                                        SizedBox(
+                                          width: 24,
+                                          height: 24,
+                                          child: CircularProgressIndicator(
+                                            strokeWidth: 2,
+                                            color: Theme.of(context).colorScheme.primary,
+                                          ),
+                                        ),
+                                      ],
+                                    ),
+                                  ),
+                                ),
+                                errorWidget: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(20),
+                                    color: Theme.of(context).colorScheme.surfaceVariant,
+                                  ),
+                                  child: Center(
+                                    child: Icon(
+                                      Icons.music_note,
+                                      size: 80,
+                                      color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : Center(
+                          child: Container(
+                            constraints: const BoxConstraints(maxWidth: 360, maxHeight: 360),
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(20),
+                              color: Theme.of(context).colorScheme.surfaceVariant,
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.15),
+                                  blurRadius: 30,
+                                  offset: const Offset(0, 15),
+                                  spreadRadius: -5,
+                                ),
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.08),
+                                  blurRadius: 10,
+                                  offset: const Offset(0, 5),
                                 ),
                               ],
                             ),
-                          ),
-                        ),
-                        errorWidget: Container(
-                          decoration: BoxDecoration(
-                            borderRadius: BorderRadius.circular(20),
-                            color: Theme.of(context).colorScheme.surfaceVariant,
-                          ),
-                          child: Center(
-                            child: Icon(
-                              Icons.music_note,
-                              size: 80,
-                              color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                            child: CachedCoverImage(
+                              key: ValueKey('playing_${song.id}_${song.coverArt}'),
+                              coverArtId: song.coverArt,
+                              size: 800,
+                              borderRadius: BorderRadius.circular(20),
+                              placeholder: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  color: Theme.of(context).colorScheme.surfaceVariant,
+                                ),
+                                child: Center(
+                                  child: Column(
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Icon(
+                                        Icons.music_note,
+                                        size: 60,
+                                        color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                      ),
+                                      const SizedBox(height: 16),
+                                      SizedBox(
+                                        width: 24,
+                                        height: 24,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Theme.of(context).colorScheme.primary,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ),
+                              ),
+                              errorWidget: Container(
+                                decoration: BoxDecoration(
+                                  borderRadius: BorderRadius.circular(20),
+                                  color: Theme.of(context).colorScheme.surfaceVariant,
+                                ),
+                                child: Center(
+                                  child: Icon(
+                                    Icons.music_note,
+                                    size: 80,
+                                    color: Theme.of(context).colorScheme.onSurfaceVariant.withOpacity(0.4),
+                                  ),
+                                ),
+                              ),
                             ),
                           ),
                         ),
-                      ),
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 40),
                 Column(
