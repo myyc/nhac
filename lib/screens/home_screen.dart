@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../widgets/custom_window_frame.dart';
+import '../widgets/macos_window_frame.dart';
 import 'home_view.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -172,10 +173,15 @@ class _HomeScreenState extends State<HomeScreen> {
             }
           }
         },
-        child: CustomWindowFrame(
-          showMenuButton: true,
-          child: content,
-        ),
+        child: Platform.isMacOS 
+          ? MacosWindowFrame(
+              showMenuButton: _selectedIndex != 1, // Hide menu on Library tab
+              child: content,
+            )
+          : CustomWindowFrame(
+              showMenuButton: _selectedIndex != 1, // Hide menu on Library tab
+              child: content,
+            ),
       );
       return content;
     }
