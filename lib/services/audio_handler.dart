@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/song.dart';
@@ -187,16 +188,16 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     int startIndex = 0,
     List<String?>? coverArtPaths,
   }) async {
-    print('[AudioHandler] updateQueueFromSongs() - received ${songs.length} songs, startIndex: $startIndex');
+    if (kDebugMode) print('[AudioHandler] updateQueueFromSongs() - received ${songs.length} songs, startIndex: $startIndex');
     if (songs.isNotEmpty && startIndex < songs.length) {
-      print('[AudioHandler] Starting with song: ${songs[startIndex].title} (track ${songs[startIndex].track})');
+      if (kDebugMode) print('[AudioHandler] Starting with song: ${songs[startIndex].title} (track ${songs[startIndex].track})');
     }
     
     // Simple: always replace the queue and set the index
     _queue = songs;
     _currentIndex = startIndex;
     
-    print('[AudioHandler] Queue updated - ${_queue.length} songs, currentIndex: $_currentIndex');
+    if (kDebugMode) print('[AudioHandler] Queue updated - ${_queue.length} songs, currentIndex: $_currentIndex');
     
     // Store cover art paths if provided
     if (coverArtPaths != null) {

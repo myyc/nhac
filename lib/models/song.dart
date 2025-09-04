@@ -53,11 +53,7 @@ class Song {
     // Debug: Check if discSubtitle or similar fields exist
     if (json['discNumber'] != null && json['discNumber'] > 1) {
       final possibleFields = ['discSubtitle', 'discTitle', 'setSubtitle', 'discName'];
-      for (final field in possibleFields) {
-        if (json.containsKey(field) && json[field] != null) {
-          print('Found disc subtitle field: $field = ${json[field]}');
-        }
-      }
+      // Debug logging removed - disc subtitle field detection
     }
     
     return Song(
