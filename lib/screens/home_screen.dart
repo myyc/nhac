@@ -160,16 +160,6 @@ class _HomeScreenState extends State<HomeScreen> {
                 primaryFocus.context!.widget is! EditableText) {
               final key = event.logicalKey;
               
-              // Handle ESC key - navigate to home if on Library tab
-              if (key == LogicalKeyboardKey.escape) {
-                if (_selectedIndex == 1) { // Library is at index 1
-                  setState(() {
-                    _selectedIndex = 0; // Navigate to Home
-                  });
-                }
-                return;
-              }
-              
               // Handle alphanumeric keys for search
               final label = key.keyLabel;
               // Check if it's an alphanumeric character
