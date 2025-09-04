@@ -122,9 +122,9 @@ class NhacApp extends StatelessWidget {
                 child: MaterialApp(
                   title: 'Nhac',
                   debugShowCheckedModeBanner: false,
-                  theme: themeProvider.getLightTheme(),
+                  theme: themeProvider.getDarkTheme(),
                   darkTheme: themeProvider.getDarkTheme(),
-                  themeMode: ThemeMode.system,
+                  themeMode: ThemeMode.dark,
                   home: const AuthWrapper(),
                 ),
               ),

@@ -69,11 +69,10 @@ class PlayerProvider extends ChangeNotifier {
     // Add error handling for audio playback
     _audioPlayer.playbackEventStream.listen(
       (event) {
-        print('[AudioPlayer] Playback event: processing=${event.processingState}, playing=${_audioPlayer.playing}');
+        // Playback event handled
       },
       onError: (error, stackTrace) {
-        print('[AudioPlayer] Playback error: $error');
-        print('[AudioPlayer] Stack trace: $stackTrace');
+        // Handle playback errors silently
       },
     );
     
@@ -383,38 +382,18 @@ class PlayerProvider extends ChangeNotifier {
         }
         
         // Set the audio source (either local file or stream URL)
-        print('[PlayerProvider] Setting audio source: $audioSource');
-        print('[PlayerProvider] Song: ${_currentSong!.title} by ${_currentSong!.artist}');
-        
-        try {
-          if (audioSource.startsWith('/')) {
-            // Local file path
-            print('[PlayerProvider] Loading local file');
-            await _audioPlayer.setFilePath(audioSource);
-          } else {
-            // Stream URL
-            print('[PlayerProvider] Loading stream URL');
-            await _audioPlayer.setUrl(audioSource);
-          }
-          print('[PlayerProvider] Audio source loaded successfully');
-        } catch (e, stackTrace) {
-          print('[PlayerProvider] Error loading audio source: $e');
-          print('[PlayerProvider] Stack trace: $stackTrace');
-          rethrow;
+        if (audioSource.startsWith('/')) {
+          // Local file path
+          await _audioPlayer.setFilePath(audioSource);
+        } else {
+          // Stream URL
+          await _audioPlayer.setUrl(audioSource);
         }
       }
     }
     
     // Always use the shared player for playback
-    print('[PlayerProvider] Starting playback...');
-    try {
-      await _audioPlayer.play();
-      print('[PlayerProvider] Playback started successfully');
-    } catch (e, stackTrace) {
-      print('[PlayerProvider] Error starting playback: $e');
-      print('[PlayerProvider] Stack trace: $stackTrace');
-      rethrow;
-    }
+    await _audioPlayer.play();
     
     // Pre-load next cover art
     _preloadNextCoverArt();
