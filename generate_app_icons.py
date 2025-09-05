@@ -32,6 +32,9 @@ ANDROID_SIZES = {
 # Linux icon sizes
 LINUX_SIZES = [64, 128, 256, 512]
 
+# macOS icon sizes
+MACOS_SIZES = [16, 32, 64, 128, 256, 512, 1024]
+
 
 class IconGenerator:
     def __init__(self, svg_path):
@@ -39,6 +42,7 @@ class IconGenerator:
         self.svg_path = Path(svg_path) if svg_path else self.project_root / DEFAULT_SVG
         self.android_res = self.project_root / "android/app/src/main/res"
         self.linux_icons = self.project_root / "linux/icons"
+        self.macos_assets = self.project_root / "macos/Runner/Assets.xcassets/AppIcon.appiconset"
         self.temp_dir = self.project_root / "temp_icons"
         
         if not self.svg_path.exists():
@@ -460,6 +464,20 @@ StartupWMClass=nhac'''
         
         print("  ✅ Linux icons complete!")
     
+    def generate_macos_icons(self):
+        """Generate macOS app icons."""
+        print("\n🍎 Generating macOS icons...")
+        
+        # Ensure the directory exists
+        self.macos_assets.mkdir(parents=True, exist_ok=True)
+        
+        for size in MACOS_SIZES:
+            output_path = self.macos_assets / f"app_icon_{size}.png"
+            self.convert_svg_to_png_native(size, output_path)
+            print(f"  Created: {output_path.name} ({size}x{size})")
+        
+        print("  ✅ macOS icons complete!")
+    
     def verify_results(self):
         """Verify the generated icons are correct."""
         print("\n🔍 Verifying generated icons...")
@@ -515,6 +533,7 @@ StartupWMClass=nhac'''
             
             self.generate_android_icons()
             self.generate_linux_icons()
+            self.generate_macos_icons()
             self.verify_results()
             
             print("\n" + "=" * 50)
