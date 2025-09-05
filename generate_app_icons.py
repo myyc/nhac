@@ -32,6 +32,9 @@ ANDROID_SIZES = {
 # Linux icon sizes
 LINUX_SIZES = [64, 128, 256, 512]
 
+# macOS icon sizes
+MACOS_SIZES = [16, 32, 64, 128, 256, 512, 1024]
+
 
 class IconGenerator:
     def __init__(self, svg_path):
@@ -39,6 +42,7 @@ class IconGenerator:
         self.svg_path = Path(svg_path) if svg_path else self.project_root / DEFAULT_SVG
         self.android_res = self.project_root / "android/app/src/main/res"
         self.linux_icons = self.project_root / "linux/icons"
+        self.macos_assets = self.project_root / "macos/Runner/Assets.xcassets/AppIcon.appiconset"
         self.temp_dir = self.project_root / "temp_icons"
         
         if not self.svg_path.exists():
@@ -103,21 +107,28 @@ class IconGenerator:
             shutil.rmtree(self.temp_dir)
     
     def convert_svg_to_png_native(self, size, output_path):
-        """Convert SVG to PNG using the best available converter."""
+        """Convert SVG to PNG using the best available converter, ensuring square output."""
+        # First convert to a temp file to get the actual image
+        temp_output = self.temp_dir / f"temp_{size}.png"
+        
         if self.svg_converter == 'rsvg-convert':
+            # First render at the desired size (will maintain aspect ratio)
             cmd = [
                 'rsvg-convert',
+                '-a',  # Keep aspect ratio
                 '-w', str(size),
+                '-h', str(size),
                 str(self.svg_path),
-                '-o', str(output_path)
+                '-o', str(temp_output)
             ]
         elif self.svg_converter == 'inkscape':
             cmd = [
                 'inkscape',
                 str(self.svg_path),
                 '--export-type=png',
-                f'--export-filename={output_path}',
-                f'--export-width={size}'
+                f'--export-filename={temp_output}',
+                f'--export-width={size}',
+                f'--export-height={size}'
             ]
         else:  # magick
             cmd = [
@@ -125,11 +136,29 @@ class IconGenerator:
                 '-density', '300',
                 '-background', 'none',
                 str(self.svg_path),
-                '-resize', f'{size}x{size}',
-                str(output_path)
+                '-resize', f'{size}x{size}',  # Resize maintaining aspect ratio
+                str(temp_output)
             ]
         
         subprocess.run(cmd, check=True, capture_output=True)
+        
+        # Now pad to square using PIL
+        img = Image.open(temp_output).convert("RGBA")
+        
+        # Create a new square image with transparent background
+        square_img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        
+        # Calculate position to center the image
+        img_w, img_h = img.size
+        x = (size - img_w) // 2
+        y = (size - img_h) // 2
+        
+        # Paste the image centered
+        square_img.paste(img, (x, y), img)
+        
+        # Save the square image
+        square_img.save(output_path, 'PNG')
+        
         return output_path
     
     def create_white_foreground(self, size_name, size):
@@ -460,6 +489,20 @@ StartupWMClass=nhac'''
         
         print("  ✅ Linux icons complete!")
     
+    def generate_macos_icons(self):
+        """Generate macOS app icons."""
+        print("\n🍎 Generating macOS icons...")
+        
+        # Ensure the directory exists
+        self.macos_assets.mkdir(parents=True, exist_ok=True)
+        
+        for size in MACOS_SIZES:
+            output_path = self.macos_assets / f"app_icon_{size}.png"
+            self.convert_svg_to_png_native(size, output_path)
+            print(f"  Created: {output_path.name} ({size}x{size})")
+        
+        print("  ✅ macOS icons complete!")
+    
     def verify_results(self):
         """Verify the generated icons are correct."""
         print("\n🔍 Verifying generated icons...")
@@ -515,6 +558,7 @@ StartupWMClass=nhac'''
             
             self.generate_android_icons()
             self.generate_linux_icons()
+            self.generate_macos_icons()
             self.verify_results()
             
             print("\n" + "=" * 50)
