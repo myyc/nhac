@@ -491,7 +491,7 @@ class PlayerProvider extends ChangeNotifier {
             audioSource = cachedPath;
             if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
           } else {
-            print('[PlayerProvider] Cached file invalid or too small, falling back to streaming');
+            // Cached file invalid or too small, falling back to streaming
           }
         }
       }
@@ -511,10 +511,6 @@ class PlayerProvider extends ChangeNotifier {
       }
       
       // Debug logging
-      print('[PlayerProvider] Loading next track: ${_currentSong!.title}');
-      print('[PlayerProvider] Audio source: $audioSource');
-      print('[PlayerProvider] Player state before: ${_audioPlayer.playing}');
-      
       // Stop current playback before loading new track
       await _audioPlayer.stop();
       
@@ -523,18 +519,14 @@ class PlayerProvider extends ChangeNotifier {
         // Set the audio source (either local file or stream URL)
         if (audioSource.startsWith('/')) {
           // Local file path
-          print('[PlayerProvider] Loading from file path');
           await _audioPlayer.setFilePath(audioSource);
         } else {
           // Stream URL
-          print('[PlayerProvider] Loading from URL');
           await _audioPlayer.setUrl(audioSource);
         }
       } catch (e) {
-        print('[PlayerProvider] Failed to load audio source: $e');
         // If it was a cached file that failed, try streaming instead
         if (audioSource.startsWith('/')) {
-          print('[PlayerProvider] Retrying with streaming URL');
           final shouldTranscode = _networkProvider != null && 
                                  !_networkProvider!.isOnWifi && 
                                  !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
@@ -545,9 +537,7 @@ class PlayerProvider extends ChangeNotifier {
         }
       }
       
-      print('[PlayerProvider] Calling play()...');
       await _audioPlayer.play();
-      print('[PlayerProvider] Player state after: ${_audioPlayer.playing}');
       
       notifyListeners();
       _savePlayerState();

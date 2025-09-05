@@ -13,11 +13,6 @@ class MainFlutterWindow: NSWindow {
     // Force dark appearance for the window
     self.appearance = NSAppearance(named: .darkAqua)
     
-    // Configure title bar appearance
-    self.titlebarAppearsTransparent = false
-    self.titleVisibility = .hidden
-    self.styleMask.insert(.fullSizeContentView)
-    
     super.awakeFromNib()
   }
 }
