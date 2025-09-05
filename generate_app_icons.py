@@ -107,21 +107,28 @@ class IconGenerator:
             shutil.rmtree(self.temp_dir)
     
     def convert_svg_to_png_native(self, size, output_path):
-        """Convert SVG to PNG using the best available converter."""
+        """Convert SVG to PNG using the best available converter, ensuring square output."""
+        # First convert to a temp file to get the actual image
+        temp_output = self.temp_dir / f"temp_{size}.png"
+        
         if self.svg_converter == 'rsvg-convert':
+            # First render at the desired size (will maintain aspect ratio)
             cmd = [
                 'rsvg-convert',
+                '-a',  # Keep aspect ratio
                 '-w', str(size),
+                '-h', str(size),
                 str(self.svg_path),
-                '-o', str(output_path)
+                '-o', str(temp_output)
             ]
         elif self.svg_converter == 'inkscape':
             cmd = [
                 'inkscape',
                 str(self.svg_path),
                 '--export-type=png',
-                f'--export-filename={output_path}',
-                f'--export-width={size}'
+                f'--export-filename={temp_output}',
+                f'--export-width={size}',
+                f'--export-height={size}'
             ]
         else:  # magick
             cmd = [
@@ -129,11 +136,29 @@ class IconGenerator:
                 '-density', '300',
                 '-background', 'none',
                 str(self.svg_path),
-                '-resize', f'{size}x{size}',
-                str(output_path)
+                '-resize', f'{size}x{size}',  # Resize maintaining aspect ratio
+                str(temp_output)
             ]
         
         subprocess.run(cmd, check=True, capture_output=True)
+        
+        # Now pad to square using PIL
+        img = Image.open(temp_output).convert("RGBA")
+        
+        # Create a new square image with transparent background
+        square_img = Image.new('RGBA', (size, size), (0, 0, 0, 0))
+        
+        # Calculate position to center the image
+        img_w, img_h = img.size
+        x = (size - img_w) // 2
+        y = (size - img_h) // 2
+        
+        # Paste the image centered
+        square_img.paste(img, (x, y), img)
+        
+        # Save the square image
+        square_img.save(output_path, 'PNG')
+        
         return output_path
     
     def create_white_foreground(self, size_name, size):
