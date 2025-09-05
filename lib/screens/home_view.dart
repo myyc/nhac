@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -10,6 +11,7 @@ import '../providers/network_provider.dart';
 import '../models/album.dart';
 import '../widgets/offline_indicator.dart';
 import '../widgets/cached_cover_image.dart';
+import '../services/library_scan_service.dart';
 import 'album_detail_screen.dart';
 
 class HomeView extends StatefulWidget {
@@ -26,6 +28,7 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
   List<Album>? _mostPlayed;
   List<Album>? _random;
   bool _isLoading = true;
+  StreamSubscription<LibraryChangeEvent>? _libraryUpdateSubscription;
   
   // Pull to search animation
   late AnimationController _pullController;
@@ -40,12 +43,24 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
       duration: const Duration(milliseconds: 200),
     );
     _loadData();
+    _listenForLibraryUpdates();
   }
   
   @override
   void dispose() {
+    _libraryUpdateSubscription?.cancel();
     _pullController.dispose();
     super.dispose();
+  }
+  
+  void _listenForLibraryUpdates() {
+    final cacheProvider = context.read<CacheProvider>();
+    _libraryUpdateSubscription = cacheProvider.libraryUpdates.listen((event) {
+      if (event.hasChanges && mounted) {
+        // Simply refresh the data to show new albums
+        _loadData();
+      }
+    });
   }
 
   Future<void> _loadData() async {

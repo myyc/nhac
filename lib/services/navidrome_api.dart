@@ -263,4 +263,37 @@ class NavidromeApi {
   Future<void> unstar(String id) async {
     await _request('unstar', {'id': id});
   }
+
+  // Library scanning methods (Subsonic API v1.15.0+)
+  Future<void> startScan() async {
+    try {
+      await _request('startScan');
+    } catch (e) {
+      // Some servers might not support this endpoint
+      print('Warning: startScan not supported or failed: $e');
+    }
+  }
+
+  Future<Map<String, dynamic>> getScanStatus() async {
+    try {
+      final response = await _request('getScanStatus');
+      final scanStatus = response['scanStatus'] ?? {};
+      
+      return {
+        'scanning': scanStatus['scanning'] ?? false,
+        'count': scanStatus['count'] ?? 0,
+        'folderCount': scanStatus['folderCount'] ?? 0,
+        'lastScan': scanStatus['lastScan'],
+      };
+    } catch (e) {
+      // Some servers might not support this endpoint
+      print('Warning: getScanStatus not supported or failed: $e');
+      return {
+        'scanning': false,
+        'count': 0,
+        'folderCount': 0,
+        'lastScan': null,
+      };
+    }
+  }
 }

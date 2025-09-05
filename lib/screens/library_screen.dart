@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -7,6 +8,7 @@ import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/album.dart';
+import '../services/library_scan_service.dart';
 import 'album_detail_screen.dart';
 
 class LibraryScreen extends StatefulWidget {
@@ -28,6 +30,7 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
   List<String>? _sortedArtists;
   bool _isLoading = true;
   String? _error;
+  StreamSubscription<LibraryChangeEvent>? _libraryUpdateSubscription;
   
   // Pull to search animation
   late AnimationController _pullController;
@@ -42,12 +45,24 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
       duration: const Duration(milliseconds: 200),
     );
     _loadAlbums();
+    _listenForLibraryUpdates();
   }
   
   @override
   void dispose() {
+    _libraryUpdateSubscription?.cancel();
     _pullController.dispose();
     super.dispose();
+  }
+  
+  void _listenForLibraryUpdates() {
+    final cacheProvider = context.read<CacheProvider>();
+    _libraryUpdateSubscription = cacheProvider.libraryUpdates.listen((event) {
+      if (event.hasChanges && mounted) {
+        // Simply reload albums when library changes are detected
+        _loadAlbums(forceRefresh: false);
+      }
+    });
   }
 
   Future<void> _loadAlbums({bool forceRefresh = false}) async {
