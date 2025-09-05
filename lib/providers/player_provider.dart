@@ -221,11 +221,15 @@ class PlayerProvider extends ChangeNotifier {
         } else {
           // Check for cached audio file first
           String? audioSource;
-          if (_audioFileCacheService != null) {
+          if (_audioFileCacheService != null && Platform.isLinux) {
+            // Only use cache on Linux for now
             final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
             if (cachedPath != null) {
-              audioSource = cachedPath;
-              if (kDebugMode) print('[PlayerProvider] Restoring from cache: ${_currentSong!.title}');
+              final cachedFile = File(cachedPath);
+              if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+                audioSource = cachedPath;
+                if (kDebugMode) print('[PlayerProvider] Restoring from cache: ${_currentSong!.title}');
+              }
             }
           }
           
@@ -359,11 +363,15 @@ class PlayerProvider extends ChangeNotifier {
       } else {
         // Check for cached audio file first
         String? audioSource;
-        if (_audioFileCacheService != null) {
+        if (_audioFileCacheService != null && Platform.isLinux) {
+          // Only use cache on Linux for now
           final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
           if (cachedPath != null) {
-            audioSource = cachedPath;
-            if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+            final cachedFile = File(cachedPath);
+            if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+              audioSource = cachedPath;
+              if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+            }
           }
         }
         
@@ -473,11 +481,18 @@ class PlayerProvider extends ChangeNotifier {
       
       // Check for cached audio file first
       String? audioSource;
-      if (_audioFileCacheService != null) {
+      if (_audioFileCacheService != null && Platform.isLinux) {
+        // Only use cache on Linux for now, macOS has issues with cached files
         final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
         if (cachedPath != null) {
-          audioSource = cachedPath;
-          if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+          // Validate the cached file exists and is readable
+          final cachedFile = File(cachedPath);
+          if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+            audioSource = cachedPath;
+            if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+          } else {
+            print('[PlayerProvider] Cached file invalid or too small, falling back to streaming');
+          }
         }
       }
       
@@ -503,15 +518,31 @@ class PlayerProvider extends ChangeNotifier {
       // Stop current playback before loading new track
       await _audioPlayer.stop();
       
-      // Set the audio source (either local file or stream URL)
-      if (audioSource.startsWith('/')) {
-        // Local file path
-        print('[PlayerProvider] Loading from file path');
-        await _audioPlayer.setFilePath(audioSource);
-      } else {
-        // Stream URL
-        print('[PlayerProvider] Loading from URL');
-        await _audioPlayer.setUrl(audioSource);
+      // Try to load the audio source, fall back to streaming if it fails
+      try {
+        // Set the audio source (either local file or stream URL)
+        if (audioSource.startsWith('/')) {
+          // Local file path
+          print('[PlayerProvider] Loading from file path');
+          await _audioPlayer.setFilePath(audioSource);
+        } else {
+          // Stream URL
+          print('[PlayerProvider] Loading from URL');
+          await _audioPlayer.setUrl(audioSource);
+        }
+      } catch (e) {
+        print('[PlayerProvider] Failed to load audio source: $e');
+        // If it was a cached file that failed, try streaming instead
+        if (audioSource.startsWith('/')) {
+          print('[PlayerProvider] Retrying with streaming URL');
+          final shouldTranscode = _networkProvider != null && 
+                                 !_networkProvider!.isOnWifi && 
+                                 !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+          await _audioPlayer.setUrl(audioSource);
+        } else {
+          rethrow; // If streaming also failed, propagate the error
+        }
       }
       
       print('[PlayerProvider] Calling play()...');
@@ -556,11 +587,15 @@ class PlayerProvider extends ChangeNotifier {
       
       // Check for cached audio file first
       String? audioSource;
-      if (_audioFileCacheService != null) {
+      if (_audioFileCacheService != null && Platform.isLinux) {
+        // Only use cache on Linux for now
         final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
         if (cachedPath != null) {
-          audioSource = cachedPath;
-          if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+          final cachedFile = File(cachedPath);
+          if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+            audioSource = cachedPath;
+            if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
+          }
         }
       }
       
