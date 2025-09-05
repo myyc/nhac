@@ -381,6 +381,9 @@ class PlayerProvider extends ChangeNotifier {
           }
         }
         
+        // Stop any current playback first
+        await _audioPlayer.stop();
+        
         // Set the audio source (either local file or stream URL)
         if (audioSource.startsWith('/')) {
           // Local file path
@@ -492,15 +495,28 @@ class PlayerProvider extends ChangeNotifier {
         }
       }
       
+      // Debug logging
+      print('[PlayerProvider] Loading next track: ${_currentSong!.title}');
+      print('[PlayerProvider] Audio source: $audioSource');
+      print('[PlayerProvider] Player state before: ${_audioPlayer.playing}');
+      
+      // Stop current playback before loading new track
+      await _audioPlayer.stop();
+      
       // Set the audio source (either local file or stream URL)
       if (audioSource.startsWith('/')) {
         // Local file path
+        print('[PlayerProvider] Loading from file path');
         await _audioPlayer.setFilePath(audioSource);
       } else {
         // Stream URL
+        print('[PlayerProvider] Loading from URL');
         await _audioPlayer.setUrl(audioSource);
       }
+      
+      print('[PlayerProvider] Calling play()...');
       await _audioPlayer.play();
+      print('[PlayerProvider] Player state after: ${_audioPlayer.playing}');
       
       notifyListeners();
       _savePlayerState();
