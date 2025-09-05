@@ -50,6 +50,18 @@ class _LoginScreenState extends State<LoginScreen> {
       return const SizedBox.shrink();
     }
     
+    // For macOS, only provide draggable area without visible controls
+    if (Platform.isMacOS) {
+      return WindowTitleBarBox(
+        child: Container(
+          height: 48,
+          color: Colors.transparent,
+          child: MoveWindow(),
+        ),
+      );
+    }
+    
+    // For Windows and Linux, show the close button
     return WindowTitleBarBox(
       child: Container(
         height: 48,

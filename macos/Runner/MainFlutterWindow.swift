@@ -10,6 +10,9 @@ class MainFlutterWindow: NSWindow {
 
     RegisterGeneratedPlugins(registry: flutterViewController)
 
+    // Force dark appearance for the window
+    self.appearance = NSAppearance(named: .darkAqua)
+    
     super.awakeFromNib()
   }
 }

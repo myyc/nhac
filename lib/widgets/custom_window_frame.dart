@@ -39,7 +39,9 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
 
   @override
   Widget build(BuildContext context) {
-    if (!Platform.isWindows && !Platform.isLinux && !Platform.isMacOS) {
+    // Only apply custom window frame for Windows and Linux
+    // macOS has its own implementation in MacosWindowFrame
+    if (!Platform.isWindows && !Platform.isLinux) {
       return widget.child;
     }
 
@@ -58,12 +60,12 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
               opacity: _isHoveringButtons ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: Container(
-                width: widget.showMenuButton ? 112 : 56,
+                width: widget.showMenuButton ? 96 : 56,
                 height: 56,
                 decoration: BoxDecoration(
-                  color: Colors.transparent,
+                  color: Theme.of(context).colorScheme.surface,
                   borderRadius: const BorderRadius.only(
-                    bottomLeft: Radius.circular(8),
+                    bottomLeft: Radius.circular(10),
                   ),
                 ),
                 child: WindowTitleBarBox(
@@ -81,7 +83,7 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
         Positioned(
           top: 0,
           left: 56, // Leave space for back button
-          right: widget.showMenuButton ? 112 : 56, // Leave space for window buttons
+          right: widget.showMenuButton ? 96 : 56, // Leave space for window buttons
           child: WindowTitleBarBox(
             child: Container(
               height: 56, // Same height as the app bar
@@ -111,9 +113,14 @@ class WindowButtons extends StatelessWidget {
     
     return Container(
       height: 56,
-      color: Colors.transparent,
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surface,
+        borderRadius: const BorderRadius.only(
+          bottomLeft: Radius.circular(10),
+        ),
+      ),
       child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
+        mainAxisAlignment: MainAxisAlignment.end,
         children: [
           if (showMenuButton && onMenuPressed != null)
             IconButton(
@@ -127,6 +134,7 @@ class WindowButtons extends StatelessWidget {
             onPressed: () => appWindow.close(),
             hoverColor: Colors.red.withOpacity(0.1),
           ),
+          const SizedBox(width: 8), // Add right padding
         ],
       ),
     );

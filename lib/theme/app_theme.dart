@@ -68,6 +68,8 @@ class AppTheme {
   }
 
   static TextTheme buildTextTheme(ColorScheme colorScheme) {
+    // macOS font fallback chain
+    const fontFallback = ['.SF NS Text', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'];
     final baseTextTheme = GoogleFonts.interTextTheme();
     
     return baseTextTheme.copyWith(
@@ -76,95 +78,96 @@ class AppTheme {
         fontWeight: FontWeight.w400,
         letterSpacing: -0.25,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       displayMedium: GoogleFonts.inter(
         fontSize: 45,
         fontWeight: FontWeight.w400,
         letterSpacing: 0,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       displaySmall: GoogleFonts.inter(
         fontSize: 36,
         fontWeight: FontWeight.w400,
         letterSpacing: 0,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       headlineLarge: GoogleFonts.inter(
         fontSize: 32,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       headlineMedium: GoogleFonts.inter(
         fontSize: 28,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       headlineSmall: GoogleFonts.inter(
         fontSize: 24,
         fontWeight: FontWeight.w600,
         letterSpacing: 0,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       titleLarge: GoogleFonts.inter(
         fontSize: 22,
         fontWeight: FontWeight.w500,
         letterSpacing: 0,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       titleMedium: GoogleFonts.inter(
         fontSize: 16,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.15,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       titleSmall: GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.1,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       bodyLarge: GoogleFonts.inter(
         fontSize: 16,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.5,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       bodyMedium: GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.25,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       bodySmall: GoogleFonts.inter(
         fontSize: 12,
         fontWeight: FontWeight.w400,
         letterSpacing: 0.4,
         color: colorScheme.onSurface.withOpacity(0.7),
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       labelLarge: GoogleFonts.inter(
         fontSize: 14,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.1,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       labelMedium: GoogleFonts.inter(
         fontSize: 12,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.5,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       labelSmall: GoogleFonts.inter(
         fontSize: 11,
         fontWeight: FontWeight.w500,
         letterSpacing: 0.5,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
     );
   }
 
   static AppBarTheme buildAppBarTheme(ColorScheme colorScheme) {
+    const fontFallback = ['.SF NS Text', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'];
     return AppBarTheme(
       backgroundColor: colorScheme.surface,
       foregroundColor: colorScheme.onSurface,
@@ -175,7 +178,7 @@ class AppTheme {
         fontSize: 22,
         fontWeight: FontWeight.w600,
         color: colorScheme.onSurface,
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
     );
   }
 
@@ -191,6 +194,7 @@ class AppTheme {
   }
 
   static ElevatedButtonThemeData buildElevatedButtonTheme(ColorScheme colorScheme) {
+    const fontFallback = ['.SF NS Text', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'];
     return ElevatedButtonThemeData(
       style: ElevatedButton.styleFrom(
         backgroundColor: colorScheme.surface,
@@ -203,12 +207,13 @@ class AppTheme {
         textStyle: GoogleFonts.inter(
           fontSize: 14,
           fontWeight: FontWeight.w500,
-        ),
+        ).copyWith(fontFamilyFallback: fontFallback),
       ),
     );
   }
 
   static FilledButtonThemeData buildFilledButtonTheme(ColorScheme colorScheme) {
+    const fontFallback = ['.SF NS Text', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'];
     return FilledButtonThemeData(
       style: FilledButton.styleFrom(
         backgroundColor: colorScheme.primary,
@@ -220,7 +225,7 @@ class AppTheme {
         textStyle: GoogleFonts.inter(
           fontSize: 14,
           fontWeight: FontWeight.w500,
-        ),
+        ).copyWith(fontFamilyFallback: fontFallback),
       ),
     );
   }
@@ -239,6 +244,7 @@ class AppTheme {
   }
 
   static NavigationBarThemeData buildNavigationBarTheme(ColorScheme colorScheme) {
+    const fontFallback = ['.SF NS Text', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'];
     return NavigationBarThemeData(
       backgroundColor: colorScheme.surface.withOpacity(0.95),
       indicatorColor: colorScheme.primary.withOpacity(0.12),
@@ -248,13 +254,13 @@ class AppTheme {
             fontSize: 12,
             fontWeight: FontWeight.w500,
             color: colorScheme.primary,
-          );
+          ).copyWith(fontFamilyFallback: fontFallback);
         }
         return GoogleFonts.inter(
           fontSize: 12,
           fontWeight: FontWeight.w400,
           color: colorScheme.onSurface.withOpacity(0.7),
-        );
+        ).copyWith(fontFamilyFallback: fontFallback);
       }),
       iconTheme: MaterialStateProperty.resolveWith((states) {
         if (states.contains(MaterialState.selected)) {
@@ -266,6 +272,7 @@ class AppTheme {
   }
 
   static InputDecorationTheme buildInputDecorationTheme(ColorScheme colorScheme) {
+    const fontFallback = ['.SF NS Text', 'Helvetica Neue', 'Helvetica', 'Arial', 'sans-serif'];
     return InputDecorationTheme(
       filled: true,
       fillColor: colorScheme.surfaceVariant,
@@ -292,10 +299,10 @@ class AppTheme {
       contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 16),
       hintStyle: GoogleFonts.inter(
         color: colorScheme.onSurface.withOpacity(0.6),
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
       labelStyle: GoogleFonts.inter(
         color: colorScheme.onSurface.withOpacity(0.7),
-      ),
+      ).copyWith(fontFamilyFallback: fontFallback),
     );
   }
 }

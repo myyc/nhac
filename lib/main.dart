@@ -25,8 +25,11 @@ late AudioPlayer globalAudioPlayer;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize just_audio with media_kit backend for Linux
-  JustAudioMediaKit.ensureInitialized();
+  // Initialize just_audio with media_kit backend for Linux only
+  // macOS uses the native just_audio implementation
+  if (Platform.isLinux) {
+    JustAudioMediaKit.ensureInitialized();
+  }
   
   // Initialize database
   try {
@@ -119,9 +122,9 @@ class NhacApp extends StatelessWidget {
                 child: MaterialApp(
                   title: 'Nhac',
                   debugShowCheckedModeBanner: false,
-                  theme: themeProvider.getLightTheme(),
+                  theme: themeProvider.getDarkTheme(),
                   darkTheme: themeProvider.getDarkTheme(),
-                  themeMode: ThemeMode.system,
+                  themeMode: ThemeMode.dark,
                   home: const AuthWrapper(),
                 ),
               ),
