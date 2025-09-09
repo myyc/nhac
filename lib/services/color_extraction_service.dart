@@ -68,10 +68,13 @@ class ColorExtractionService {
     Color onAccent = _getContrastingTextColor(accent);
     
     // Surface colors for cards and overlays
+    // Prefer vibrant colors for surfaces to maintain character
     Color lightSurface = palette.lightVibrantColor?.color ?? 
-                        _lightenColor(accent, 0.95);
+                        palette.lightMutedColor?.color ??
+                        _createLightSurface(accent, primary);
     
     Color darkSurface = palette.darkVibrantColor?.color ?? 
+                       palette.darkMutedColor?.color ??
                        _darkenColor(accent, 0.8);
 
     return ExtractedColors(
@@ -84,6 +87,21 @@ class ColorExtractionService {
       onPrimary: onPrimary,
       onAccent: onAccent,
     );
+  }
+
+  /// Create a light surface color that preserves character
+  Color _createLightSurface(Color accent, Color primary) {
+    // Choose the more saturated color
+    final accentHsl = HSLColor.fromColor(accent);
+    final primaryHsl = HSLColor.fromColor(primary);
+    final baseColor = accentHsl.saturation > primaryHsl.saturation ? accent : primary;
+    final hsl = HSLColor.fromColor(baseColor);
+    
+    // Create a vibrant light surface
+    return hsl
+        .withLightness(0.80)
+        .withSaturation((hsl.saturation * 0.55).clamp(0.35, 0.65))
+        .toColor();
   }
 
   /// Lighten a color by a given amount (0.0 to 1.0)
@@ -181,6 +199,37 @@ class ExtractedColors {
       onPrimary: Colors.white,
       onAccent: Colors.white,
     );
+  }
+
+  /// Get a vibrant background color for social share images
+  /// Uses the accent color with minimal adjustment to maintain vibrancy
+  Color getSocialShareBackground() {
+    // Use the accent color as the base
+    final accentHsl = HSLColor.fromColor(accent);
+    
+    // Only adjust if the accent is too dark
+    // We want it light enough to be a background but still vibrant
+    double targetLightness = accentHsl.lightness;
+    
+    // Ensure minimum lightness of 0.65 for visibility
+    if (targetLightness < 0.65) {
+      targetLightness = 0.65;
+    }
+    // But not too light (max 0.85)
+    else if (targetLightness > 0.85) {
+      targetLightness = 0.85;
+    }
+    
+    // Keep most of the original saturation for vibrancy
+    // Only reduce slightly if it's extremely saturated
+    final targetSaturation = accentHsl.saturation > 0.9 
+        ? accentHsl.saturation * 0.85
+        : accentHsl.saturation;
+    
+    return accentHsl
+        .withLightness(targetLightness)
+        .withSaturation(targetSaturation)
+        .toColor();
   }
 
   /// Create a ColorScheme from extracted colors

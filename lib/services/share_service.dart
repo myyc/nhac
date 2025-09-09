@@ -108,9 +108,9 @@ class ShareService {
     required ExtractedColors colors,
     required String style,
   }) {
-    final backgroundColor = colors.lightBackground;
-    final frameColor = colors.darkBackground;
-    final textColor = colors.darkBackground.computeLuminance() > 0.5 
+    final backgroundColor = colors.getSocialShareBackground();
+    final frameColor = colors.darkSurface;
+    final textColor = colors.darkSurface.computeLuminance() > 0.5 
         ? Colors.black87 
         : Colors.white;
 
