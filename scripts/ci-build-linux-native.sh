@@ -8,10 +8,9 @@ echo "==================================="
 # Add Flutter to PATH if not already there
 export PATH="$PATH:$HOME/flutter/bin"
 
-# Clean previous builds (but preserve cached dependencies)
-echo "Cleaning previous builds (preserving cache)..."
-# Only clean the bundle, not the deps
-rm -rf build/linux/x64/release/bundle || true
+# Clean previous builds
+echo "Cleaning previous builds..."
+flutter clean
 
 # Get dependencies
 echo "Getting dependencies..."
@@ -48,8 +47,8 @@ if [ -f "dev.myyc.nhac.yaml" ] && command -v flatpak-builder &> /dev/null; then
     # Build Flatpak (using cache if available)
     flatpak-builder --ccache --keep-build-dirs build-dir dev.myyc.nhac.yaml
     
-    # Create repository and export
-    flatpak-builder --repo=repo --force-clean build-dir dev.myyc.nhac.yaml
+    # Create repository and export (without force-clean to keep cache)
+    flatpak-builder --repo=repo build-dir dev.myyc.nhac.yaml
     
     # Build single-file bundle
     flatpak build-bundle repo nhac.flatpak dev.myyc.nhac

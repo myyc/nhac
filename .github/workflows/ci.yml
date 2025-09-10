@@ -67,24 +67,19 @@ jobs:
         with:
           path: |
             ~/.pub-cache
-            .dart_tool
-            build/linux/x64/release/deps
-            build/linux/x64/release/cmake_install
-            .flatpak-builder
-          key: ${{ runner.os }}-flutter-linux-${{ hashFiles('pubspec.lock') }}
+          key: ${{ runner.os }}-flutter-${{ hashFiles('pubspec.lock') }}
           restore-keys: |
-            ${{ runner.os }}-flutter-linux-
             ${{ runner.os }}-flutter-
 
-      - name: Cache Flatpak dependencies
+      - name: Cache Flatpak build artifacts
         uses: actions/cache@v4
         with:
           path: |
-            ~/.local/share/flatpak
-            build-dir/.flatpak-builder
-          key: ${{ runner.os }}-flatpak-${{ hashFiles('dev.myyc.nhac.yaml') }}
+            .flatpak-builder/build
+            .flatpak-builder/ccache
+          key: ${{ runner.os }}-flatpak-build-${{ hashFiles('dev.myyc.nhac.yaml') }}
           restore-keys: |
-            ${{ runner.os }}-flatpak-
+            ${{ runner.os }}-flatpak-build-
 
       - name: Setup Flutter
         run: |
