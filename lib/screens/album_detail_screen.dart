@@ -45,7 +45,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     });
 
     try {
-      final songs = await cacheProvider.getSongsByAlbum(widget.album.id);
+      // Force refresh to get complete metadata including suffix and bitRate
+      final songs = await cacheProvider.getSongsByAlbum(
+        widget.album.id,
+        forceRefresh: true,
+      );
       if (mounted) {
         setState(() {
           _songs = songs;
@@ -402,11 +406,74 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                           color: playingTrackColor?.withOpacity(0.8),
                                         ),
                                       ),
-                                      trailing: Text(
-                                        song.formattedDuration,
-                                        style: TextStyle(
-                                          color: playingTrackColor,
-                                        ),
+                                      trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          if (song.suffix != null || song.bitRate != null)
+                                            Container(
+                                              width: 60,
+                                              margin: const EdgeInsets.only(right: 20),
+                                              child: Column(
+                                                mainAxisAlignment: MainAxisAlignment.center,
+                                                crossAxisAlignment: CrossAxisAlignment.center,
+                                                mainAxisSize: MainAxisSize.min,
+                                                children: [
+                                                  if (song.suffix != null)
+                                                    Text(
+                                                      song.suffix!.toUpperCase(),
+                                                      style: TextStyle(
+                                                        color: playingTrackColor?.withOpacity(0.6) ?? 
+                                                               Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                        fontSize: 11,
+                                                        fontWeight: FontWeight.w500,
+                                                      ),
+                                                    ),
+                                                  if (song.suffix != null && song.bitRate != null && song.bitRate! > 0)
+                                                    Builder(
+                                                      builder: (context) {
+                                                        final format = song.suffix?.toLowerCase();
+                                                        final isLossless = format == 'flac' || format == 'alac' || 
+                                                                           format == 'wav' || format == 'aiff';
+                                                        
+                                                        String text;
+                                                        if (isLossless) {
+                                                          // For lossless, show bit depth/sample rate
+                                                          // TODO: We need to get actual bit depth and sample rate from API
+                                                          // For now, estimate based on bitrate
+                                                          if (song.bitRate! > 4000) {
+                                                            text = '24/96';
+                                                          } else if (song.bitRate! > 2000) {
+                                                            text = '24/48';
+                                                          } else {
+                                                            text = '16/44.1';
+                                                          }
+                                                        } else {
+                                                          // For lossy, show just the bitrate number
+                                                          text = '${song.bitRate}';
+                                                        }
+                                                        
+                                                        return Text(
+                                                          text,
+                                                          style: TextStyle(
+                                                            color: playingTrackColor?.withOpacity(0.6) ?? 
+                                                                   Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                            fontSize: 10,
+                                                          ),
+                                                        );
+                                                      },
+                                                    ),
+                                                ],
+                                              ),
+                                            ),
+                                          Text(
+                                            song.formattedDuration,
+                                            style: TextStyle(
+                                              color: playingTrackColor ?? 
+                                                     Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                                              fontSize: 12,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       onTap: () {
                                         final networkProvider = context.read<NetworkProvider>();

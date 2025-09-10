@@ -25,6 +25,10 @@ class PlayerProvider extends ChangeNotifier {
   Timer? _preloadTimer;
   ConcatenatingAudioSource? _playlist;
   StreamSubscription? _mediaItemSubscription;
+  StreamSubscription? _playerStateSubscription;
+  StreamSubscription? _positionSubscription;
+  StreamSubscription? _durationSubscription;
+  StreamSubscription? _playbackEventSubscription;
   DateTime? _lastPreloadCheck;
   
   Song? _currentSong;
@@ -33,6 +37,7 @@ class PlayerProvider extends ChangeNotifier {
   List<Song> _queue = [];
   int _currentIndex = 0;
   bool _isPlaying = false;
+  bool _isBuffering = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   double _volume = 1.0;
@@ -47,6 +52,7 @@ class PlayerProvider extends ChangeNotifier {
   List<Song> get queue => _queue;
   int get currentIndex => _currentIndex;
   bool get isPlaying => _isPlaying;
+  bool get isBuffering => _isBuffering;
   Duration get position => _position;
   Duration get duration => _duration;
   double get volume => _volume;
@@ -65,9 +71,25 @@ class PlayerProvider extends ChangeNotifier {
     _loadPersistedState();
   }
   
+  void _cancelStreamSubscriptions() {
+    _playerStateSubscription?.cancel();
+    _positionSubscription?.cancel();
+    _durationSubscription?.cancel();
+    _playbackEventSubscription?.cancel();
+    _mediaItemSubscription?.cancel();
+    _playerStateSubscription = null;
+    _positionSubscription = null;
+    _durationSubscription = null;
+    _playbackEventSubscription = null;
+    _mediaItemSubscription = null;
+  }
+  
   void _initializePlayer() {
+    // Cancel any existing subscriptions first
+    _cancelStreamSubscriptions();
+    
     // Add error handling for audio playback
-    _audioPlayer.playbackEventStream.listen(
+    _playbackEventSubscription = _audioPlayer.playbackEventStream.listen(
       (event) {
         // Playback event handled
       },
@@ -76,9 +98,9 @@ class PlayerProvider extends ChangeNotifier {
       },
     );
     
-    _audioPlayer.positionStream.listen((position) {
-      // Don't update position while restoring
-      if (_isRestoring) return;
+    _positionSubscription = _audioPlayer.positionStream.listen((position) {
+      // Don't update position while restoring or buffering
+      if (_isRestoring || _isBuffering) return;
       
       // Only update position if we've restored or if actively playing
       if (_hasRestoredPosition || _isPlaying) {
@@ -103,15 +125,27 @@ class PlayerProvider extends ChangeNotifier {
       }
     });
     
-    _audioPlayer.durationStream.listen((duration) {
+    _durationSubscription = _audioPlayer.durationStream.listen((duration) {
       if (duration != null) {
         _duration = duration;
         notifyListeners();
       }
     });
     
-    _audioPlayer.playerStateStream.listen((state) {
+    _playerStateSubscription = _audioPlayer.playerStateStream.listen((state) {
+      // Track playing state separately from buffering
       _isPlaying = state.playing;
+      
+      // Consider both buffering and loading states as "buffering" for UI purposes
+      // Also check if we're "playing" but not ready (which means buffering)
+      _isBuffering = state.processingState == ProcessingState.buffering || 
+                     state.processingState == ProcessingState.loading ||
+                     (state.playing && state.processingState != ProcessingState.ready);
+      
+      // Debug logging to see what states we're getting
+      if (kDebugMode) {
+        print('[PlayerProvider] PlayerState: playing=${state.playing}, processingState=${state.processingState}, isBuffering=$_isBuffering');
+      }
       
       if (state.processingState == ProcessingState.completed) {
         next();
@@ -916,7 +950,7 @@ class PlayerProvider extends ChangeNotifier {
   @override
   void dispose() {
     _preloadTimer?.cancel();
-    _mediaItemSubscription?.cancel();
+    _cancelStreamSubscriptions();
     _savePlayerState();
     _audioPlayer.dispose();
     _cacheManager.dispose();
