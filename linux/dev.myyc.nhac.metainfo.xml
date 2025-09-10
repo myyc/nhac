@@ -28,6 +28,8 @@
   
   <launchable type="desktop-id">dev.myyc.nhac.desktop</launchable>
   
+  <icon type="stock">dev.myyc.nhac</icon>
+  
   <screenshots>
     <screenshot type="default">
       <caption>Main player view</caption>
