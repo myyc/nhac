@@ -44,11 +44,12 @@ dependencies:
   # State management
   provider: ^6.1.2
   
-  # Audio playback with Linux support
+  # Audio playback with Linux and macOS support
   just_audio: ^0.10.4
   just_audio_media_kit: any
   media_kit: any
   media_kit_libs_linux: any
+  media_kit_libs_macos_audio: any
   
   # Image caching
   cached_network_image: ^3.4.1

@@ -25,9 +25,9 @@ late AudioPlayer globalAudioPlayer;
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize just_audio with media_kit backend for Linux only
-  // macOS uses the native just_audio implementation
-  if (Platform.isLinux) {
+  // Initialize just_audio with media_kit backend for Linux and macOS
+  // This provides better codec support including FLAC
+  if (Platform.isLinux || Platform.isMacOS) {
     JustAudioMediaKit.ensureInitialized();
   }
   
