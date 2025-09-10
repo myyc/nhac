@@ -12,7 +12,7 @@ on:
 jobs:
   test:
     name: Run Tests
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
 
   build-macos:
     name: Build macOS
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     needs: test
     steps:
       - name: Checkout code
@@ -56,14 +56,27 @@ jobs:
 
   build-linux:
     name: Build Linux (Flatpak)
-    runs-on: self-hosted
+    runs-on: [self-hosted, Linux]
     needs: test
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      - name: Build Linux app in Docker
-        run: ./scripts/ci-build-linux.sh
+      - name: Setup Flutter
+        run: |
+          export PATH="$PATH:$HOME/flutter/bin"
+          flutter --version
+          flutter doctor -v
+
+      - name: Get dependencies
+        run: |
+          export PATH="$PATH:$HOME/flutter/bin"
+          flutter pub get
+
+      - name: Build Linux app
+        run: |
+          export PATH="$PATH:$HOME/flutter/bin"
+          ./scripts/ci-build-linux-native.sh
 
       - name: Upload Linux Flatpak
         uses: actions/upload-artifact@v4
@@ -81,7 +94,7 @@ jobs:
 
   build-android:
     name: Build Android
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     needs: test
     steps:
       - name: Checkout code
@@ -114,7 +127,7 @@ jobs:
 
   release:
     name: Create Release
-    runs-on: self-hosted
+    runs-on: [self-hosted, macOS]
     needs: [build-macos, build-linux, build-android]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
