@@ -62,6 +62,30 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+            .dart_tool
+            build/linux/x64/release/deps
+            build/linux/x64/release/cmake_install
+            .flatpak-builder
+          key: ${{ runner.os }}-flutter-linux-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-linux-
+            ${{ runner.os }}-flutter-
+
+      - name: Cache Flatpak dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.local/share/flatpak
+            build-dir/.flatpak-builder
+          key: ${{ runner.os }}-flatpak-${{ hashFiles('dev.myyc.nhac.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-flatpak-
+
       - name: Setup Flutter
         run: |
           export PATH="$PATH:$HOME/flutter/bin"
