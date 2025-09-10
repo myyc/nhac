@@ -42,10 +42,18 @@ RUN apt-get update && apt-get install -y \
 ENV FLUTTER_VERSION=3.35.2
 ENV FLUTTER_HOME=/opt/flutter
 ENV PATH="$FLUTTER_HOME/bin:$FLUTTER_HOME/bin/cache/dart-sdk/bin:$PATH"
+ENV FLUTTER_SUPPRESS_ANALYTICS=true
+ENV PUB_ENVIRONMENT=flutter_bot
 
 RUN git clone https://github.com/flutter/flutter.git -b $FLUTTER_VERSION $FLUTTER_HOME && \
-    flutter doctor -v && \
     flutter config --no-analytics && \
+    flutter config --no-enable-android && \
+    flutter config --no-enable-ios && \
+    flutter config --no-enable-web && \
+    flutter config --no-enable-macos && \
+    flutter config --no-enable-windows && \
+    flutter config --enable-linux-desktop && \
+    flutter doctor -v --linux-only && \
     flutter precache --linux
 
 # Setup Flatpak

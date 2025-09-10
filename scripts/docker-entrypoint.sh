@@ -1,11 +1,8 @@
 #!/bin/bash
 # Docker entrypoint for Linux builds
 
-# Accept Flutter licenses
-yes | flutter doctor --android-licenses 2>/dev/null || true
-
-# Run Flutter doctor to verify setup
-flutter doctor -v
+# Run Flutter doctor for Linux only
+flutter doctor -v --linux-only
 
 # Execute the passed command
 exec "$@"
