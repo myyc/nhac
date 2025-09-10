@@ -36,13 +36,16 @@ docker run --rm \
         echo 'Getting dependencies...'
         flutter pub get
         
-        # Build Linux app
-        echo 'Building Linux app (release mode)...'
-        flutter build linux --release --tree-shake-icons
+        # Build Linux app (x64 only)
+        echo 'Building Linux app (release mode, x64)...'
+        flutter build linux --release --tree-shake-icons --target-platform linux-x64 || {
+            echo 'Error: Linux build failed'
+            exit 1
+        }
         
         # Check if build was successful
         if [ ! -f 'build/linux/x64/release/bundle/nhac' ]; then
-            echo 'Error: Linux build failed'
+            echo 'Error: Linux x64 build output not found'
             exit 1
         fi
         

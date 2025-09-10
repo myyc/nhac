@@ -98,10 +98,6 @@ jobs:
           export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
           echo "JAVA_HOME=${JAVA_HOME}" >> $GITHUB_ENV
           echo "PATH=${JAVA_HOME}/bin:${PATH}" >> $GITHUB_ENV
-          # Verify Java installation
-          ls -la "${JAVA_HOME}"
-          which java
-          java -version
 
       - name: Get dependencies
         run: flutter pub get
@@ -109,21 +105,11 @@ jobs:
       - name: Build Android APK
         run: flutter build apk --release
 
-      - name: Build Android App Bundle
-        run: flutter build appbundle --release
-
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: nhac-android-apk
           path: build/app/outputs/flutter-apk/app-release.apk
-          retention-days: 7
-
-      - name: Upload App Bundle
-        uses: actions/upload-artifact@v4
-        with:
-          name: nhac-android-bundle
-          path: build/app/outputs/bundle/release/app-release.aab
           retention-days: 7
 
   release:
@@ -145,7 +131,6 @@ jobs:
             nhac-macos/nhac.app
             nhac-linux-flatpak/nhac.flatpak
             nhac-android-apk/app-release.apk
-            nhac-android-bundle/app-release.aab
           draft: false
           prerelease: false
         env:
