@@ -49,7 +49,7 @@ dependencies:
   just_audio_media_kit: any
   media_kit: any
   media_kit_libs_linux: any
-  media_kit_libs_macos_audio: any
+  media_kit_libs_audio: any  # Cross-platform audio libs (includes macOS)
   
   # Image caching
   cached_network_image: ^3.4.1
