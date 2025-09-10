@@ -56,11 +56,6 @@ else
     echo "Skipping Flatpak build (flatpak-builder not found or manifest missing)"
 fi
 
-# Create tarball of Linux binary bundle
-echo "Creating binary tarball..."
-cd build/linux/x64/release/bundle
-tar czf ../../../../../nhac-linux-x64.tar.gz *
-cd -
 
 echo "==================================="
 echo "Linux builds completed successfully!"
