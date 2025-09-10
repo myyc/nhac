@@ -16,6 +16,13 @@ class _LoginScreenState extends State<LoginScreen> {
   final _serverUrlController = TextEditingController();
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+  String? _errorMessage;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadSavedCredentials();
+  }
 
   @override
   void dispose() {
@@ -24,9 +31,35 @@ class _LoginScreenState extends State<LoginScreen> {
     _passwordController.dispose();
     super.dispose();
   }
+  
+  Future<void> _loadSavedCredentials() async {
+    final authProvider = context.read<AuthProvider>();
+    final credentials = await authProvider.getLastValidCredentials();
+    
+    if (mounted) {
+      setState(() {
+        _serverUrlController.text = credentials['server'] ?? '';
+        _usernameController.text = credentials['username'] ?? '';
+        _passwordController.text = credentials['password'] ?? '';
+      });
+    }
+  }
+  
+  void _clearError() {
+    if (_errorMessage != null) {
+      setState(() {
+        _errorMessage = null;
+      });
+    }
+  }
 
   Future<void> _login() async {
     if (_formKey.currentState!.validate()) {
+      // Clear any existing error
+      setState(() {
+        _errorMessage = null;
+      });
+      
       final authProvider = context.read<AuthProvider>();
       final success = await authProvider.login(
         serverUrl: _serverUrlController.text,
@@ -35,12 +68,9 @@ class _LoginScreenState extends State<LoginScreen> {
       );
 
       if (!success && mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(authProvider.error ?? 'Login failed'),
-            backgroundColor: Colors.red,
-          ),
-        );
+        setState(() {
+          _errorMessage = authProvider.error ?? 'Login failed';
+        });
       }
     }
   }
@@ -176,6 +206,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               keyboardType: TextInputType.url,
                               textInputAction: TextInputAction.next,
                               autocorrect: false,
+                              onChanged: (_) => _clearError(),
                               validator: (value) {
                                 if (value == null || value.isEmpty) {
                                   return 'Please enter server URL';
@@ -196,6 +227,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     autofillHints: const [AutofillHints.username],
                                     textInputAction: TextInputAction.next,
                                     autocorrect: false,
+                                    onChanged: (_) => _clearError(),
                                     validator: (value) {
                                       if (value == null || value.isEmpty) {
                                         return 'Please enter username';
@@ -213,6 +245,7 @@ class _LoginScreenState extends State<LoginScreen> {
                                     autofillHints: const [AutofillHints.password],
                                     textInputAction: TextInputAction.done,
                                     obscureText: true,
+                                    onChanged: (_) => _clearError(),
                                     onFieldSubmitted: (_) => _login(),
                                     validator: (value) {
                                       if (value == null || value.isEmpty) {
@@ -255,6 +288,37 @@ class _LoginScreenState extends State<LoginScreen> {
                                 );
                               },
                             ),
+                            if (_errorMessage != null) ...[
+                              const SizedBox(height: 16),
+                              Container(
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 12,
+                                  vertical: 8,
+                                ),
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.errorContainer.withOpacity(0.5),
+                                  borderRadius: BorderRadius.circular(8),
+                                ),
+                                child: Row(
+                                  children: [
+                                    Icon(
+                                      Icons.error_outline,
+                                      size: 20,
+                                      color: theme.colorScheme.error,
+                                    ),
+                                    const SizedBox(width: 8),
+                                    Expanded(
+                                      child: Text(
+                                        _errorMessage!,
+                                        style: theme.textTheme.bodySmall?.copyWith(
+                                          color: theme.colorScheme.error,
+                                        ),
+                                      ),
+                                    ),
+                                  ],
+                                ),
+                              ),
+                            ],
                           ],
                         ),
                       ),

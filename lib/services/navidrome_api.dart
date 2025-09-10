@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import '../models/artist.dart';
 import '../models/album.dart';
 import '../models/song.dart';
+import 'auth_service.dart' show LoginResult;
 
 class NavidromeApi {
   final String baseUrl;
@@ -103,6 +104,38 @@ class NavidromeApi {
       return true;
     } catch (e) {
       return false;
+    }
+  }
+  
+  /// Ping with detailed error information for login
+  Future<LoginResult> pingWithError() async {
+    try {
+      await _request('ping');
+      return LoginResult(success: true);
+    } catch (e) {
+      String errorMessage;
+      if (e.toString().contains('API error')) {
+        // Extract API error message
+        errorMessage = e.toString().replaceAll('Exception: API error: ', '');
+      } else if (e.toString().contains('HTTP error')) {
+        // HTTP errors
+        if (e.toString().contains('401')) {
+          errorMessage = 'Invalid username or password';
+        } else if (e.toString().contains('404')) {
+          errorMessage = 'Server not found. Check the URL';
+        } else if (e.toString().contains('500')) {
+          errorMessage = 'Server error. Please try again later';
+        } else {
+          errorMessage = 'Connection failed: ${e.toString().replaceAll('Exception: HTTP error: ', '')}';
+        }
+      } else if (e.toString().contains('SocketException')) {
+        errorMessage = 'Cannot connect to server. Check URL and network';
+      } else if (e.toString().contains('HandshakeException')) {
+        errorMessage = 'SSL certificate error. Try using http:// instead of https://';
+      } else {
+        errorMessage = 'Connection failed: ${e.toString().replaceAll('Exception: ', '')}';
+      }
+      return LoginResult(success: false, error: errorMessage);
     }
   }
 
