@@ -12,7 +12,7 @@ on:
 jobs:
   test:
     name: Run Tests
-    runs-on: macmini
+    runs-on: self-hosted
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -30,7 +30,7 @@ jobs:
 
   build-macos:
     name: Build macOS
-    runs-on: macmini
+    runs-on: self-hosted
     needs: test
     steps:
       - name: Checkout code
@@ -56,7 +56,7 @@ jobs:
 
   build-linux:
     name: Build Linux (Flatpak)
-    runs-on: macmini
+    runs-on: self-hosted
     needs: test
     steps:
       - name: Checkout code
@@ -81,7 +81,7 @@ jobs:
 
   build-android:
     name: Build Android
-    runs-on: macmini
+    runs-on: self-hosted
     needs: test
     steps:
       - name: Checkout code
@@ -123,7 +123,7 @@ jobs:
 
   release:
     name: Create Release
-    runs-on: macmini
+    runs-on: self-hosted
     needs: [build-macos, build-linux, build-android]
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
