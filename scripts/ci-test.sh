@@ -19,9 +19,9 @@ flutter analyze --no-fatal-infos --no-fatal-warnings || {
 
 # Format check (optional - can be strict)
 echo "Checking code formatting..."
-flutter format --set-exit-if-changed --dry-run . || {
+dart format --set-exit-if-changed --output=none . || {
     echo "Warning: Code formatting issues found"
-    echo "Run 'flutter format .' to fix formatting"
+    echo "Run 'dart format .' to fix formatting"
     # Uncomment the next line to make formatting checks strict
     # exit 1
 }
