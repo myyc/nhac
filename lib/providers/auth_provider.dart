@@ -36,17 +36,17 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final success = await _authService.login(
+      final result = await _authService.login(
         serverUrl: serverUrl,
         username: username,
         password: password,
       );
       
-      if (!success) {
-        _error = 'Failed to connect to server. Please check your credentials.';
+      if (!result.success) {
+        _error = result.error ?? 'Failed to connect to server. Please check your credentials.';
       }
       
-      return success;
+      return result.success;
     } catch (e) {
       _error = e.toString();
       return false;
@@ -64,5 +64,9 @@ class AuthProvider extends ChangeNotifier {
     
     _isLoading = false;
     notifyListeners();
+  }
+  
+  Future<Map<String, String?>> getLastValidCredentials() async {
+    return await _authService.getLastValidCredentials();
   }
 }
