@@ -1,0 +1,162 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, master ]
+    tags:
+      - 'v*'
+  pull_request:
+    branches: [ main, master ]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: Run Tests
+    runs-on: [self-hosted, macOS]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Run tests
+        run: ./scripts/ci-test.sh
+
+  build-macos:
+    name: Build macOS
+    runs-on: [self-hosted, macOS]
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build macOS app
+        run: ./scripts/ci-build-macos.sh
+
+      - name: Upload macOS artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhac-macos
+          path: build/macos/Build/Products/Release/nhac.app
+          retention-days: 7
+
+  build-linux:
+    name: Build Linux (Flatpak)
+    runs-on: [self-hosted, Linux]
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Cache Flutter dependencies
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.pub-cache
+          key: ${{ runner.os }}-flutter-${{ hashFiles('pubspec.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-flutter-
+
+      - name: Cache Flatpak build artifacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            .flatpak-builder/build
+            .flatpak-builder/ccache
+          key: ${{ runner.os }}-flatpak-build-${{ hashFiles('dev.myyc.nhac.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-flatpak-build-
+
+      - name: Setup Flutter
+        run: |
+          export PATH="$PATH:$HOME/flutter/bin"
+          flutter --version
+          flutter doctor -v
+
+      - name: Get dependencies
+        run: |
+          export PATH="$PATH:$HOME/flutter/bin"
+          flutter pub get
+
+      - name: Build Linux app
+        run: |
+          export PATH="$PATH:$HOME/flutter/bin"
+          ./scripts/ci-build-linux-native.sh
+
+      - name: Upload Linux Flatpak
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhac-linux-flatpak
+          path: nhac.flatpak
+          retention-days: 7
+
+  build-android:
+    name: Build Android
+    runs-on: [self-hosted, macOS]
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter
+        run: |
+          flutter --version
+          flutter doctor -v
+
+      - name: Setup Java
+        run: |
+          # Use Android Studio's bundled JDK
+          export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+          echo "JAVA_HOME=${JAVA_HOME}" >> $GITHUB_ENV
+          echo "PATH=${JAVA_HOME}/bin:${PATH}" >> $GITHUB_ENV
+
+      - name: Get dependencies
+        run: flutter pub get
+
+      - name: Build Android APK
+        run: flutter build apk --release
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: nhac-android-apk
+          path: build/app/outputs/flutter-apk/app-release.apk
+          retention-days: 7
+
+  release:
+    name: Create Release
+    runs-on: [self-hosted, macOS]
+    needs: [build-macos, build-linux, build-android]
+    if: startsWith(github.ref, 'refs/tags/v')
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: |
+            nhac-macos/nhac.app
+            nhac-linux-flatpak/nhac.flatpak
+            nhac-android-apk/app-release.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
