@@ -45,10 +45,8 @@ if [ -f "dev.myyc.nhac.yaml" ] && command -v flatpak-builder &> /dev/null; then
     flatpak install --user -y flathub org.freedesktop.Sdk//24.08 || true
     
     # Build Flatpak (using cache if available)
-    flatpak-builder --ccache --keep-build-dirs build-dir dev.myyc.nhac.yaml
-    
-    # Create repository and export (without force-clean to keep cache)
-    flatpak-builder --repo=repo build-dir dev.myyc.nhac.yaml
+    # First build creates the app
+    flatpak-builder --ccache --keep-build-dirs --repo=repo build-dir dev.myyc.nhac.yaml
     
     # Build single-file bundle
     flatpak build-bundle repo nhac.flatpak dev.myyc.nhac
