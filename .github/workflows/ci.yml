@@ -94,8 +94,10 @@ jobs:
 
       - name: Setup Java
         run: |
-          echo "JAVA_HOME=$(/usr/libexec/java_home -v 17)" >> $GITHUB_ENV
-          export JAVA_HOME=$(/usr/libexec/java_home -v 17)
+          echo "JAVA_HOME=/Applications/Android Studio.app/Contents/jbr/Contents/Home" >> $GITHUB_ENV
+          export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
+          echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
+          export PATH="$JAVA_HOME/bin:$PATH"
           java -version
 
       - name: Get dependencies
