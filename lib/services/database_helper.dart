@@ -10,7 +10,7 @@ import '../models/song.dart';
 class DatabaseHelper {
   static Database? _database;
   static const String _databaseName = 'nhac_cache.db';
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
 
   static Future<Database> get database async {
     if (_database != null) return _database!;
@@ -74,6 +74,12 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE songs ADD COLUMN discNumber INTEGER');
       await db.execute('ALTER TABLE songs ADD COLUMN discSubtitle TEXT');
     }
+    
+    if (oldVersion < 4) {
+      // Add audio format and bitrate fields to songs table
+      await db.execute('ALTER TABLE songs ADD COLUMN suffix TEXT');
+      await db.execute('ALTER TABLE songs ADD COLUMN bitRate INTEGER');
+    }
   }
 
   static Future<void> _onCreate(Database db, int version) async {
@@ -113,6 +119,8 @@ class DatabaseHelper {
         discNumber INTEGER,
         discSubtitle TEXT,
         coverArt TEXT,
+        suffix TEXT,
+        bitRate INTEGER,
         lastSync INTEGER NOT NULL
       )
     ''');
@@ -279,6 +287,8 @@ class DatabaseHelper {
           'discNumber': song.discNumber,
           'discSubtitle': song.discSubtitle,
           'coverArt': song.coverArt,
+          'suffix': song.suffix,
+          'bitRate': song.bitRate,
           'lastSync': now,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -309,6 +319,8 @@ class DatabaseHelper {
       discNumber: map['discNumber'] as int?,
       discSubtitle: map['discSubtitle'] as String?,
       coverArt: map['coverArt'] as String?,
+      suffix: map['suffix'] as String?,
+      bitRate: map['bitRate'] as int?,
     )).toList();
   }
 

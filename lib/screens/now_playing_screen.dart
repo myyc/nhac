@@ -404,8 +404,8 @@ class NowPlayingScreen extends StatelessWidget {
                         child: Padding(
                           padding: const EdgeInsets.all(16),
                           child: Icon(
-                            playerProvider.isPlaying 
-                                ? Icons.pause 
+                            playerProvider.isPlaying
+                                ? (playerProvider.isBuffering ? Icons.hourglass_empty : Icons.pause)
                                 : Icons.play_arrow,
                             size: 48,
                             color: _getContrastIconColor(Theme.of(context).colorScheme.primary),
