@@ -395,21 +395,22 @@ class NowPlayingScreen extends StatelessWidget {
                           : null,
                     ),
                     const SizedBox(width: 16),
-                    Container(
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Theme.of(context).colorScheme.primary,
-                      ),
-                      child: IconButton(
-                        icon: Icon(
-                          playerProvider.isPlaying 
-                              ? Icons.pause 
-                              : Icons.play_arrow,
-                          color: _getContrastIconColor(Theme.of(context).colorScheme.primary),
+                    Material(
+                      color: Theme.of(context).colorScheme.primary,
+                      shape: const CircleBorder(),
+                      child: InkWell(
+                        customBorder: const CircleBorder(),
+                        onTap: playerProvider.togglePlayPause,
+                        child: Padding(
+                          padding: const EdgeInsets.all(16),
+                          child: Icon(
+                            playerProvider.isPlaying 
+                                ? Icons.pause 
+                                : Icons.play_arrow,
+                            size: 48,
+                            color: _getContrastIconColor(Theme.of(context).colorScheme.primary),
+                          ),
                         ),
-                        iconSize: 48,
-                        padding: const EdgeInsets.all(16),
-                        onPressed: playerProvider.togglePlayPause,
                       ),
                     ),
                     const SizedBox(width: 16),
