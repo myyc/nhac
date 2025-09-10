@@ -94,11 +94,14 @@ jobs:
 
       - name: Setup Java
         run: |
+          # Use Android Studio's bundled JDK
           export JAVA_HOME="/Applications/Android Studio.app/Contents/jbr/Contents/Home"
-          echo "JAVA_HOME=$JAVA_HOME" >> $GITHUB_ENV
-          echo "PATH=$JAVA_HOME/bin:$PATH" >> $GITHUB_ENV
-          export PATH="$JAVA_HOME/bin:$PATH"
-          "$JAVA_HOME/bin/java" -version
+          echo "JAVA_HOME=${JAVA_HOME}" >> $GITHUB_ENV
+          echo "PATH=${JAVA_HOME}/bin:${PATH}" >> $GITHUB_ENV
+          # Verify Java installation
+          ls -la "${JAVA_HOME}"
+          which java
+          java -version
 
       - name: Get dependencies
         run: flutter pub get

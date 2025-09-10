@@ -1,8 +1,8 @@
 #!/bin/bash
 # Docker entrypoint for Linux builds
 
-# Run Flutter doctor for Linux only
-flutter doctor -v --linux-only
+# Run Flutter doctor (ignore failures for missing platforms)
+flutter doctor -v || true
 
 # Execute the passed command
 exec "$@"

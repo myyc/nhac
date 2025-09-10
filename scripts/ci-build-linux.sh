@@ -26,7 +26,7 @@ docker run --rm \
         # Setup Flutter
         export PATH=\"\$PATH:/opt/flutter/bin\"
         flutter --version
-        flutter doctor -v --linux-only
+        flutter doctor -v || true
         
         # Clean previous builds
         echo 'Cleaning previous builds...'
