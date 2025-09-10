@@ -31,29 +31,7 @@ if [ ! -d "build/macos/Build/Products/Release/nhac.app" ]; then
     exit 1
 fi
 
-# Get version from pubspec.yaml
-VERSION=$(grep "^version:" pubspec.yaml | cut -d' ' -f2 | cut -d'+' -f1)
-echo "Built version: $VERSION"
-
-# Optional: Create a DMG for distribution
-if command -v create-dmg &> /dev/null; then
-    echo "Creating DMG..."
-    create-dmg \
-        --volname "nhac" \
-        --window-pos 200 120 \
-        --window-size 600 400 \
-        --icon-size 100 \
-        --icon "nhac.app" 150 150 \
-        --hide-extension "nhac.app" \
-        --app-drop-link 450 150 \
-        --no-internet-enable \
-        "nhac-$VERSION.dmg" \
-        "build/macos/Build/Products/Release/"
-    echo "DMG created: nhac-$VERSION.dmg"
-else
-    echo "Note: create-dmg not found, skipping DMG creation"
-    echo "Install with: npm install -g create-dmg"
-fi
+echo "App bundle ready at: build/macos/Build/Products/Release/nhac.app"
 
 echo "==================================="
 echo "macOS build completed successfully!"
