@@ -27,6 +27,13 @@ class _HomeScreenState extends State<HomeScreen> {
     });
   }
 
+  bool _isControlCharacter(String character) {
+    // Check if the character is a control character (non-printable)
+    final codeUnit = character.codeUnitAt(0);
+    // Control characters are typically in the range 0x00-0x1F and 0x7F-0x9F
+    return codeUnit < 0x20 || (codeUnit >= 0x7F && codeUnit <= 0x9F);
+  }
+
   void _openSearch({String? initialQuery}) {
     if (!_isSearchOpen) {
       setState(() {
@@ -161,14 +168,12 @@ class _HomeScreenState extends State<HomeScreen> {
                 primaryFocus.context!.widget is! EditableText) {
               final key = event.logicalKey;
               
-              // Handle alphanumeric keys for search
-              final label = key.keyLabel;
-              // Check if it's an alphanumeric character
-              if (label.length == 1 && RegExp(r'[a-zA-Z0-9]').hasMatch(label)) {
-                // Convert to lowercase unless shift is pressed
-                final shiftPressed = event.isShiftPressed;
-                final query = shiftPressed ? label.toUpperCase() : label.toLowerCase();
-                _openSearch(initialQuery: query);
+              // Handle character input for search
+              final character = event.character;
+              // Check if it's a printable character (not null and not a control character)
+              if (character != null && character.isNotEmpty && !_isControlCharacter(character)) {
+                // Use the actual character based on the current keyboard layout
+                _openSearch(initialQuery: character);
               }
             }
           }
