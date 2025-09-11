@@ -11,6 +11,7 @@ import '../models/artist.dart';
 import '../models/album.dart';
 import '../models/song.dart';
 import '../widgets/custom_window_frame.dart';
+import '../widgets/now_playing_bar.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
 
@@ -361,7 +362,19 @@ class _SearchScreenState extends State<SearchScreen> {
         backgroundColor: Colors.transparent,
         elevation: 0,
       ),
-      body: content,
+      body: Column(
+        children: [
+          Expanded(child: content),
+          Consumer<PlayerProvider>(
+            builder: (context, playerProvider, _) {
+              if (playerProvider.currentSong != null) {
+                return const NowPlayingBar();
+              }
+              return const SizedBox.shrink();
+            },
+          ),
+        ],
+      ),
     );
     
     // For desktop, add ESC key handling and CustomWindowFrame

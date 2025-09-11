@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:io';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
@@ -10,19 +11,194 @@ import '../models/song.dart';
 class DatabaseHelper {
   static Database? _database;
   static const String _databaseName = 'nhac_cache.db';
-  static const int _databaseVersion = 3;
+  static const int _databaseVersion = 4;
+  static bool _isInitializing = false;
+  static final _initCompleter = <String, Completer<Database>>{};
 
   static Future<Database> get database async {
-    if (_database != null) return _database!;
-    
-    // Initialize sqflite_ffi for desktop platforms
-    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      sqfliteFfiInit();
-      databaseFactory = databaseFactoryFfi;
+    // If database is already open, return it
+    if (_database != null && _database!.isOpen) {
+      return _database!;
     }
     
-    _database = await _initDatabase();
-    return _database!;
+    // If already initializing, wait for the existing initialization
+    if (_isInitializing) {
+      final completer = _initCompleter['main'] ??= Completer<Database>();
+      return await completer.future;
+    }
+    
+    // Start initialization
+    _isInitializing = true;
+    _initCompleter['main'] = Completer<Database>();
+    
+    try {
+      // Initialize sqflite_ffi for desktop platforms
+      if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+        sqfliteFfiInit();
+        databaseFactory = databaseFactoryFfi;
+      }
+      
+      _database = await _initDatabase();
+      _initCompleter['main']!.complete(_database!);
+      return _database!;
+    } catch (e) {
+      final errorStr = e.toString().toLowerCase();
+      
+      // Check if this is a corruption or persistent lock error
+      if (errorStr.contains('database is locked') ||
+          errorStr.contains('corrupt') ||
+          errorStr.contains('malformed') ||
+          errorStr.contains('not a database')) {
+        
+        print('[DatabaseHelper] Database corruption detected: $e');
+        print('[DatabaseHelper] Attempting automatic recovery...');
+        
+        // Reset the database
+        await resetDatabase();
+        
+        // Try once more with a fresh database
+        try {
+          _database = await _initDatabase();
+          _initCompleter['main']!.complete(_database!);
+          print('[DatabaseHelper] Database recovery successful!');
+          return _database!;
+        } catch (retryError) {
+          _initCompleter['main']!.completeError(retryError);
+          rethrow;
+        }
+      } else {
+        _initCompleter['main']!.completeError(e);
+        rethrow;
+      }
+    } finally {
+      _isInitializing = false;
+      _initCompleter.remove('main');
+    }
+  }
+  
+  static Future<void> closeDatabase() async {
+    if (_database != null && _database!.isOpen) {
+      await _database!.close();
+      _database = null;
+    }
+  }
+  
+  // Reset database - deletes and recreates the database
+  static Future<void> resetDatabase() async {
+    print('[DatabaseHelper] Resetting database due to corruption or persistent errors');
+    
+    // Close existing connection
+    await closeDatabase();
+    
+    // Clear initialization state
+    _isInitializing = false;
+    _initCompleter.clear();
+    
+    // Get database path
+    String dbPath;
+    if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
+      final appDir = await getApplicationSupportDirectory();
+      dbPath = join(appDir.path, _databaseName);
+    } else {
+      final documentsDirectory = await getApplicationDocumentsDirectory();
+      dbPath = join(documentsDirectory.path, _databaseName);
+    }
+    
+    // Delete all database files
+    final filesToDelete = [
+      dbPath,
+      '$dbPath-journal',
+      '$dbPath-wal',
+      '$dbPath-shm',
+    ];
+    
+    for (final filePath in filesToDelete) {
+      try {
+        final file = File(filePath);
+        if (await file.exists()) {
+          await file.delete();
+          print('[DatabaseHelper] Deleted: $filePath');
+        }
+      } catch (e) {
+        print('[DatabaseHelper] Could not delete $filePath: $e');
+      }
+    }
+    
+    print('[DatabaseHelper] Database reset complete. Will recreate on next access.');
+    print('[DatabaseHelper] Note: Cover art images preserved in covers/ directory');
+  }
+  
+  // Retry logic for database operations with auto-reset on persistent failures
+  static Future<T> _retryOperation<T>(
+    Future<T> Function() operation, {
+    int maxRetries = 3,
+    Duration initialDelay = const Duration(milliseconds: 100),
+    bool allowReset = true,
+  }) async {
+    int retryCount = 0;
+    Duration delay = initialDelay;
+    String? lastError;
+    
+    while (retryCount < maxRetries) {
+      try {
+        return await operation();
+      } catch (e) {
+        lastError = e.toString();
+        final errorStr = lastError.toLowerCase();
+        
+        if ((errorStr.contains('database is locked') || 
+             errorStr.contains('corrupt') ||
+             errorStr.contains('malformed')) && 
+            retryCount < maxRetries - 1) {
+          retryCount++;
+          print('[DatabaseHelper] Database error, retrying in ${delay.inMilliseconds}ms (attempt $retryCount/$maxRetries): $e');
+          await Future.delayed(delay);
+          delay *= 2; // Exponential backoff
+        } else {
+          // If this is the last retry and we're allowed to reset
+          if (retryCount == maxRetries - 1 && allowReset && 
+              (errorStr.contains('database is locked') || 
+               errorStr.contains('corrupt') ||
+               errorStr.contains('malformed'))) {
+            print('[DatabaseHelper] Persistent database error after $maxRetries retries');
+            print('[DatabaseHelper] Triggering database reset...');
+            
+            // Reset the database
+            await resetDatabase();
+            
+            // For read operations, try to return empty data
+            // The app will re-sync from server
+            try {
+              // Try casting empty list to T
+              return [] as T;
+            } catch (_) {
+              // If it's not a list type, throw the error
+              throw Exception('Database was reset due to persistent errors. Please retry.');
+            }
+          }
+          rethrow;
+        }
+      }
+    }
+    
+    print('[DatabaseHelper] Database operation failed after $maxRetries retries: $lastError');
+    
+    // If we still have persistent errors, reset the database
+    if (allowReset) {
+      print('[DatabaseHelper] Triggering final database reset...');
+      await resetDatabase();
+      
+      // For read operations, try to return empty data
+      try {
+        // Try casting empty list to T
+        return [] as T;
+      } catch (_) {
+        // If it's not a list type, throw the error
+        throw Exception('Database operation failed after $maxRetries retries');
+      }
+    }
+    
+    throw Exception('Database operation failed after $maxRetries retries');
   }
 
   static Future<Database> _initDatabase() async {
@@ -39,11 +215,47 @@ class DatabaseHelper {
       path = join(documentsDirectory.path, _databaseName);
     }
     
+    // Clean up any stale journal files before opening
+    final journalPath = '$path-journal';
+    
+    try {
+      final journalFile = File(journalPath);
+      if (await journalFile.exists()) {
+        print('Cleaning up stale journal file...');
+        await journalFile.delete();
+      }
+    } catch (e) {
+      print('Warning: Could not clean up journal file: $e');
+    }
+    
     return await openDatabase(
       path,
       version: _databaseVersion,
       onCreate: _onCreate,
       onUpgrade: _onUpgrade,
+      singleInstance: true,
+      onOpen: (db) async {
+        // Enable foreign keys
+        await db.execute('PRAGMA foreign_keys = ON');
+        
+        // Enable WAL mode for better concurrency
+        // Note: This must be done in onOpen, not onConfigure
+        try {
+          final result = await db.rawQuery('PRAGMA journal_mode = WAL');
+          print('Journal mode set to: $result');
+        } catch (e) {
+          print('Warning: Could not set WAL mode: $e');
+        }
+        
+        // Set busy timeout to 10 seconds
+        await db.execute('PRAGMA busy_timeout = 10000');
+        
+        // Set synchronous to NORMAL for better performance
+        await db.execute('PRAGMA synchronous = NORMAL');
+        
+        // Optimize database
+        await db.execute('PRAGMA optimize');
+      },
     );
   }
 
@@ -73,6 +285,12 @@ class DatabaseHelper {
       // Add disc fields to songs table
       await db.execute('ALTER TABLE songs ADD COLUMN discNumber INTEGER');
       await db.execute('ALTER TABLE songs ADD COLUMN discSubtitle TEXT');
+    }
+    
+    if (oldVersion < 4) {
+      // Add audio format and bitrate fields to songs table
+      await db.execute('ALTER TABLE songs ADD COLUMN suffix TEXT');
+      await db.execute('ALTER TABLE songs ADD COLUMN bitRate INTEGER');
     }
   }
 
@@ -113,6 +331,8 @@ class DatabaseHelper {
         discNumber INTEGER,
         discSubtitle TEXT,
         coverArt TEXT,
+        suffix TEXT,
+        bitRate INTEGER,
         lastSync INTEGER NOT NULL
       )
     ''');
@@ -178,14 +398,16 @@ class DatabaseHelper {
   }
 
   static Future<List<Artist>> getArtists() async {
-    final db = await database;
-    final maps = await db.query('artists', orderBy: 'name');
-    
-    return maps.map((map) => Artist(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      albumCount: map['albumCount'] as int?,
-    )).toList();
+    return _retryOperation(() async {
+      final db = await database;
+      final maps = await db.query('artists', orderBy: 'name');
+      
+      return maps.map((map) => Artist(
+        id: map['id'] as String,
+        name: map['name'] as String,
+        albumCount: map['albumCount'] as int?,
+      )).toList();
+    });
   }
 
   // Album operations
@@ -222,40 +444,44 @@ class DatabaseHelper {
   }
   
   static Future<List<Album>> getAlbums() async {
-    final db = await database;
-    final maps = await db.query('albums', orderBy: 'artist, name');
-    
-    return maps.map((map) => Album(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      artist: map['artist'] as String?,
-      artistId: map['artistId'] as String?,
-      year: map['year'] as int?,
-      coverArt: map['coverArt'] as String?,
-      songCount: map['songCount'] as int?,
-      duration: map['duration'] as int?,
-    )).toList();
+    return _retryOperation(() async {
+      final db = await database;
+      final maps = await db.query('albums', orderBy: 'artist, name');
+      
+      return maps.map((map) => Album(
+        id: map['id'] as String,
+        name: map['name'] as String,
+        artist: map['artist'] as String?,
+        artistId: map['artistId'] as String?,
+        year: map['year'] as int?,
+        coverArt: map['coverArt'] as String?,
+        songCount: map['songCount'] as int?,
+        duration: map['duration'] as int?,
+      )).toList();
+    });
   }
 
   static Future<List<Album>> getAlbumsByArtist(String artistId) async {
-    final db = await database;
-    final maps = await db.query(
-      'albums',
-      where: 'artistId = ?',
-      whereArgs: [artistId],
-      orderBy: 'year DESC, name',
-    );
-    
-    return maps.map((map) => Album(
-      id: map['id'] as String,
-      name: map['name'] as String,
-      artist: map['artist'] as String?,
-      artistId: map['artistId'] as String?,
-      year: map['year'] as int?,
-      coverArt: map['coverArt'] as String?,
-      songCount: map['songCount'] as int?,
-      duration: map['duration'] as int?,
-    )).toList();
+    return _retryOperation(() async {
+      final db = await database;
+      final maps = await db.query(
+        'albums',
+        where: 'artistId = ?',
+        whereArgs: [artistId],
+        orderBy: 'year DESC, name',
+      );
+      
+      return maps.map((map) => Album(
+        id: map['id'] as String,
+        name: map['name'] as String,
+        artist: map['artist'] as String?,
+        artistId: map['artistId'] as String?,
+        year: map['year'] as int?,
+        coverArt: map['coverArt'] as String?,
+        songCount: map['songCount'] as int?,
+        duration: map['duration'] as int?,
+      )).toList();
+    });
   }
 
   // Song operations
@@ -279,6 +505,8 @@ class DatabaseHelper {
           'discNumber': song.discNumber,
           'discSubtitle': song.discSubtitle,
           'coverArt': song.coverArt,
+          'suffix': song.suffix,
+          'bitRate': song.bitRate,
           'lastSync': now,
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
@@ -309,6 +537,8 @@ class DatabaseHelper {
       discNumber: map['discNumber'] as int?,
       discSubtitle: map['discSubtitle'] as String?,
       coverArt: map['coverArt'] as String?,
+      suffix: map['suffix'] as String?,
+      bitRate: map['bitRate'] as int?,
     )).toList();
   }
 

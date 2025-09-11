@@ -139,22 +139,24 @@ class NowPlayingBar extends StatelessWidget {
                                   ? playerProvider.previous
                                   : null,
                             ),
-                            Container(
-                              decoration: BoxDecoration(
-                                shape: BoxShape.circle,
-                                color: extractedColors?.primary ?? theme.colorScheme.primary,
-                              ),
-                              child: IconButton(
-                                icon: Icon(
-                                  playerProvider.isPlaying 
-                                      ? Icons.pause 
-                                      : Icons.play_arrow,
-                                  color: _getContrastIconColor(
-                                    extractedColors?.primary ?? theme.colorScheme.primary
+                            Material(
+                              color: extractedColors?.primary ?? theme.colorScheme.primary,
+                              shape: const CircleBorder(),
+                              child: InkWell(
+                                customBorder: const CircleBorder(),
+                                onTap: playerProvider.togglePlayPause,
+                                child: Padding(
+                                  padding: const EdgeInsets.all(8),
+                                  child: Icon(
+                                    playerProvider.isPlaying
+                                        ? (playerProvider.isBuffering ? Icons.hourglass_empty : Icons.pause)
+                                        : Icons.play_arrow,
+                                    size: 24,
+                                    color: _getContrastIconColor(
+                                      extractedColors?.primary ?? theme.colorScheme.primary
+                                    ),
                                   ),
                                 ),
-                                padding: const EdgeInsets.all(8),
-                                onPressed: playerProvider.togglePlayPause,
                               ),
                             ),
                             IconButton(

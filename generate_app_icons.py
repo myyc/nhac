@@ -466,12 +466,24 @@ class IconGenerator:
         print("\n🐧 Generating Linux icons...")
         
         for size in LINUX_SIZES:
+            # Create icons with old naming (for compatibility)
             output_path = self.linux_icons / f"nhac-{size}.png"
             self.convert_svg_to_png_native(size, output_path)
             print(f"  Created: {output_path}")
+            
+            # Also create icons with flatpak naming convention
+            flatpak_path = self.linux_icons / f"dev.myyc.nhac-{size}.png"
+            shutil.copy(output_path, flatpak_path)
+            print(f"  Created: {flatpak_path}")
         
-        # Copy SVG
+        # Create default icons without size suffix
+        shutil.copy(self.linux_icons / "nhac-256.png", self.linux_icons / "nhac.png")
+        shutil.copy(self.linux_icons / "nhac-256.png", self.linux_icons / "dev.myyc.nhac.png")
+        print(f"  Created: default icons (256x256)")
+        
+        # Copy SVG with both names
         shutil.copy(self.svg_path, self.linux_icons / "nhac.svg")
+        shutil.copy(self.svg_path, self.linux_icons / "dev.myyc.nhac.svg")
         
         # Create desktop file
         desktop_file = self.project_root / "linux" / "nhac.desktop"
@@ -481,10 +493,10 @@ Type=Application
 Name=Nhac
 Comment=Flutter music player application
 Exec=nhac
-Icon=nhac
+Icon=dev.myyc.nhac
 Terminal=false
 Categories=AudioVideo;Audio;Music;Player;
-StartupWMClass=nhac'''
+StartupWMClass=Nhac'''
         desktop_file.write_text(desktop_content)
         
         print("  ✅ Linux icons complete!")
