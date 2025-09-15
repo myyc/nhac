@@ -98,6 +98,7 @@ dev_dependencies:
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
+  flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
@@ -110,10 +111,13 @@ flutter:
   # the material Icons class.
   uses-material-design: true
 
-  # To add assets to your application, add an assets section, like this:
-  # assets:
-  #   - images/a_dot_burr.jpeg
-  #   - images/a_dot_ham.jpeg
+  # Icon assets for launcher and notification icons
+  assets:
+    - assets/icons/nhac.svg
+    - assets/icons/fgnhac.svg
+    - assets/icons/fgsquarenhac.svg
+    - assets/icons/fgsquarenhac.png
+    - assets/icons/fgnhac.png
 
   # An image asset can refer to one or more resolution-specific "variants", see
   # https://flutter.dev/to/resolution-aware-images
@@ -140,3 +144,17 @@ flutter:
   #
   # For details regarding fonts from package dependencies,
   # see https://flutter.dev/to/font-from-package
+
+flutter_launcher_icons:
+  android: "launcher_icon"
+  ios: true
+  macos:
+    image_path: "assets/icons/fgsquarenhac.png"
+
+  # Main fallback icon (legacy)
+  image_path: "assets/icons/fgsquarenhac.png"
+
+  # Android adaptive icon configuration
+  adaptive_icon_background: "#A75C9D"
+  adaptive_icon_foreground: "assets/icons/fgsquarenhac.png"
+  adaptive_icon_monochrome: "assets/icons/fgsquarenhac.png"

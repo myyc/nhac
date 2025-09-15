@@ -1,6 +1,6 @@
 # nhac
 
-A cross-platform navidrome/subsonic client. Pretty much everything has been developed with Claude code minus the icon (which is why it's horrible) and this README (likewise).
+A cross-platform navidrome/subsonic client. Pretty much everything has been built with AI minus the icon and this README.
 
 <div align="center"><img width="400" alt="screenshot" src="https://github.com/user-attachments/assets/5ca68ccf-78c8-497b-9369-66b2a66fb89b" /></div>
 

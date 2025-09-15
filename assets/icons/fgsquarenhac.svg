@@ -2,13 +2,13 @@
 <!-- Created with Inkscape (http://www.inkscape.org/) -->
 
 <svg
-   width="152.34908mm"
-   height="152.34908mm"
-   viewBox="0 0 152.34908 152.34908"
+   width="141.37964mm"
+   height="141.37964mm"
+   viewBox="0 0 141.37964 141.37964"
    version="1.1"
    id="svg1"
    inkscape:version="1.4.2 (ebf0e940d0, 2025-05-08)"
-   sodipodi:docname="nhac2.svg"
+   sodipodi:docname="fgsquarenhac.svg"
    xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
    xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
    xmlns="http://www.w3.org/2000/svg"
@@ -24,8 +24,8 @@
      inkscape:deskcolor="#d1d1d1"
      inkscape:document-units="mm"
      inkscape:zoom="1.0333895"
-     inkscape:cx="217.24626"
-     inkscape:cy="343.52971"
+     inkscape:cx="336.27204"
+     inkscape:cy="144.18571"
      inkscape:window-width="2560"
      inkscape:window-height="1371"
      inkscape:window-x="0"
@@ -38,13 +38,7 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
      id="layer1"
-     transform="translate(-47.624995,-57.679163)">
-    <circle
-       style="fill:#a75c9d;fill-opacity:1;stroke:#000000;stroke-width:0.245533;stroke-opacity:0"
-       id="path1-7-0-2"
-       cx="123.9078"
-       cy="133.8537"
-       r="70.567055" />
+     transform="translate(-16.145979,-8.2811871)">
     <path
        id="path14"
        style="font-variation-settings:normal;fill:#ffffff;fill-opacity:1;stroke:none;stroke-width:3.91599;stroke-linecap:butt;stroke-linejoin:miter;stroke-miterlimit:4;stroke-dasharray:none;stroke-dashoffset:0;stroke-opacity:1"
@@ -53,7 +47,7 @@
        inkscape:radius="18.762222"
        inkscape:original="M 93.453125 240.83984 L 44.816406 325.08008 L 142.08789 325.08008 L 93.453125 240.83984 z "
        d="m 93.453125,222.08008 a 18.764099,18.764099 0 0 0 -16.248047,9.3789 l -48.636719,84.24024 a 18.764099,18.764099 0 0 0 16.248047,28.14258 h 97.271484 a 18.764099,18.764099 0 0 0 16.24805,-28.14258 l -48.63477,-84.24024 a 18.764099,18.764099 0 0 0 -16.248045,-9.3789 z"
-       transform="matrix(-0.29036953,-0.16764491,0.16764491,-0.29036953,98.67167,235.76021)"
+       transform="matrix(-0.29036953,-0.16764491,0.16764491,-0.29036953,61.59967,180.8775)"
        inkscape:transform-center-y="-5.7880635e-06" />
     <path
        id="path14-2"
@@ -63,7 +57,7 @@
        inkscape:radius="54.826805"
        inkscape:original="M 93.453125 222.08008 A 18.764099 18.764099 0 0 0 77.205078 231.45898 L 28.568359 315.69922 A 18.764099 18.764099 0 0 0 44.816406 343.8418 L 142.08789 343.8418 A 18.764099 18.764099 0 0 0 158.33594 315.69922 L 109.70117 231.45898 A 18.764099 18.764099 0 0 0 93.453125 222.08008 z "
        d="m 93.453125,167.25391 c -25.682898,4.4e-4 -50.87885,14.54365 -63.724609,36.7832 a 54.832288,54.832288 0 0 0 -0.0039,0.008 l -48.636718,84.24024 a 54.832288,54.832288 0 0 0 -0.0078,0.0117 c -12.836433,22.24464 -12.831504,51.33434 0.0098,73.57618 12.8412699,22.24184 38.03221,36.78917 63.714843,36.79492 a 54.832288,54.832288 0 0 0 0.01172,0 h 97.271484 a 54.832288,54.832288 0 0 0 0.0117,0 c 25.68263,-0.006 50.87357,-14.55308 63.71484,-36.79492 12.84128,-22.24184 12.8462,-51.33154 0.01,-73.57618 a 54.832288,54.832288 0 0 0 -0.006,-0.01 l -48.63477,-84.24024 a 54.832288,54.832288 0 0 0 -0.006,-0.01 c -12.84575,-22.23955 -38.04171,-36.78276 -63.724605,-36.7832 z"
-       transform="matrix(-0.29036953,-0.16764491,0.16764491,-0.29036953,98.67167,235.76021)"
+       transform="matrix(-0.29036953,-0.16764491,0.16764491,-0.29036953,61.59967,180.8775)"
        inkscape:transform-center-y="-5.7880664e-06" />
   </g>
 </svg>
