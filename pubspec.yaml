@@ -114,7 +114,6 @@ flutter:
   # Icon assets for launcher and notification icons
   assets:
     - assets/icons/nhac.svg
-    - assets/icons/squarenhac.svg
     - assets/icons/fgnhac.svg
     - assets/icons/fgsquarenhac.svg
     - assets/icons/fgsquarenhac.png
