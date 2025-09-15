@@ -236,7 +236,7 @@ class DatabaseHelper {
       singleInstance: true,
       onOpen: (db) async {
         // Enable foreign keys
-        await db.execute('PRAGMA foreign_keys = ON');
+        await db.rawQuery('PRAGMA foreign_keys = ON');
         
         // Enable WAL mode for better concurrency
         // Note: This must be done in onOpen, not onConfigure
@@ -248,13 +248,13 @@ class DatabaseHelper {
         }
         
         // Set busy timeout to 10 seconds
-        await db.execute('PRAGMA busy_timeout = 10000');
+        await db.rawQuery('PRAGMA busy_timeout = 10000');
         
         // Set synchronous to NORMAL for better performance
-        await db.execute('PRAGMA synchronous = NORMAL');
+        await db.rawQuery('PRAGMA synchronous = NORMAL');
         
         // Optimize database
-        await db.execute('PRAGMA optimize');
+        await db.rawQuery('PRAGMA optimize');
       },
     );
   }
