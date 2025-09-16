@@ -11,6 +11,7 @@ import '../models/song.dart';
 import '../models/artist.dart';
 import '../widgets/cached_cover_image.dart';
 import '../widgets/artistic_background.dart';
+import '../widgets/pull_to_search.dart';
 import 'artist_detail_screen.dart';
 import '../widgets/custom_window_frame.dart';
 import '../widgets/now_playing_bar.dart';
@@ -18,8 +19,9 @@ import 'dart:io' show Platform;
 
 class AlbumDetailScreen extends StatefulWidget {
   final Album album;
+  final VoidCallback? onOpenSearch;
 
-  const AlbumDetailScreen({super.key, required this.album});
+  const AlbumDetailScreen({super.key, required this.album, this.onOpenSearch});
 
   @override
   State<AlbumDetailScreen> createState() => _AlbumDetailScreenState();
@@ -134,10 +136,13 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                     ],
                   ),
                 )
-              : SingleChildScrollView(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
+              : PullToSearch(
+                  onSearchTriggered: widget.onOpenSearch ?? () {},
+                  triggerThreshold: 80.0,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
                       // Album cover with artistic background
                       (Platform.isWindows || Platform.isLinux || Platform.isMacOS) 
                           ? SizedBox(
@@ -254,7 +259,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                   Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (context) => ArtistDetailScreen(artist: artist),
+                                      builder: (context) => ArtistDetailScreen(
+                                        artist: artist,
+                                        onOpenSearch: widget.onOpenSearch,
+                                      ),
                                     ),
                                   );
                                 } : null,
@@ -492,6 +500,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                         
                       const SizedBox(height: 16), // Small padding at bottom
                     ],
+                    ),
                   ),
                 ),
           ),

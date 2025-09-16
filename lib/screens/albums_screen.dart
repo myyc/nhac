@@ -4,10 +4,13 @@ import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/album.dart';
 import '../widgets/cached_cover_image.dart';
+import '../widgets/pull_to_search.dart';
 import 'album_detail_screen.dart';
 
 class AlbumsScreen extends StatefulWidget {
-  const AlbumsScreen({super.key});
+  final VoidCallback? onOpenSearch;
+
+  const AlbumsScreen({super.key, this.onOpenSearch});
 
   @override
   State<AlbumsScreen> createState() => _AlbumsScreenState();
@@ -81,9 +84,12 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadAlbums,
-      child: GridView.builder(
+    return PullToSearch(
+      onSearchTriggered: widget.onOpenSearch ?? () {},
+      triggerThreshold: 80.0,
+      child: RefreshIndicator(
+        onRefresh: _loadAlbums,
+        child: GridView.builder(
         padding: const EdgeInsets.all(16),
         gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
           maxCrossAxisExtent: 200,
@@ -100,7 +106,10 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => AlbumDetailScreen(album: album),
+                  builder: (context) => AlbumDetailScreen(
+                    album: album,
+                    onOpenSearch: widget.onOpenSearch,
+                  ),
                 ),
               );
             },
@@ -140,6 +149,7 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
             ),
           );
         },
+      ),
       ),
     );
   }

@@ -8,6 +8,7 @@ import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/album.dart';
+import '../widgets/pull_to_search.dart';
 import '../services/library_scan_service.dart';
 import 'album_detail_screen.dart';
 
@@ -25,33 +26,23 @@ class LibraryScreen extends StatefulWidget {
   State<LibraryScreen> createState() => _LibraryScreenState();
 }
 
-class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProviderStateMixin {
+class _LibraryScreenState extends State<LibraryScreen> {
   Map<String, List<Album>>? _albumsByArtist;
   List<String>? _sortedArtists;
   bool _isLoading = true;
   String? _error;
   StreamSubscription<LibraryChangeEvent>? _libraryUpdateSubscription;
-  
-  // Pull to search animation
-  late AnimationController _pullController;
-  double _dragOffset = 0.0;
-  bool _isSearchTriggered = false;
 
   @override
   void initState() {
     super.initState();
-    _pullController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
     _loadAlbums();
     _listenForLibraryUpdates();
   }
-  
+
   @override
   void dispose() {
     _libraryUpdateSubscription?.cancel();
-    _pullController.dispose();
     super.dispose();
   }
   
@@ -117,7 +108,10 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AlbumDetailScreen(album: album),
+            builder: (context) => AlbumDetailScreen(
+              album: album,
+              onOpenSearch: widget.onOpenSearch,
+            ),
           ),
         );
       },
@@ -221,99 +215,13 @@ class _LibraryScreenState extends State<LibraryScreen> with SingleTickerProvider
     Widget content = (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
         ? MoveWindow(child: gridView)
         : gridView;
-    
-    // On mobile, add pull-to-search with elastic animation
+
+    // Add pull-to-search wrapper on mobile
     if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
-      content = NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification is OverscrollNotification) {
-            if (notification.overscroll < 0) {
-              setState(() {
-                _dragOffset = (_dragOffset - notification.overscroll).clamp(0.0, 150.0);
-              });
-              
-              // Trigger search at threshold
-              if (_dragOffset > 100 && !_isSearchTriggered) {
-                _isSearchTriggered = true;
-                // Haptic feedback
-                HapticFeedback.mediumImpact();
-                widget.onOpenSearch!();
-              }
-            }
-          } else if (notification is ScrollEndNotification) {
-            // Animate spring back on scroll end
-            if (_dragOffset > 0) {
-              _pullController.animateTo(0.0).then((_) {
-                if (mounted) {
-                  setState(() {
-                    _dragOffset = 0.0;
-                    _isSearchTriggered = false;
-                  });
-                }
-              });
-            }
-          }
-          return false;
-        },
-        child: Stack(
-          children: [
-            // Search indicator that appears when pulling
-            if (_dragOffset > 0)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  height: _dragOffset,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                  ),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedRotation(
-                          duration: const Duration(milliseconds: 200),
-                          turns: _dragOffset / 100 * 0.5,
-                          child: Icon(
-                            Icons.search,
-                            size: 32,
-                            color: _dragOffset > 100 
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _dragOffset > 100 ? 'Release to search' : 'Pull to search',
-                          style: TextStyle(
-                            color: _dragOffset > 100 
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            // Main content with transform
-            AnimatedBuilder(
-              animation: _pullController,
-              builder: (context, child) {
-                final animatedOffset = _dragOffset * (1 - _pullController.value);
-                return Transform.translate(
-                  offset: Offset(0, animatedOffset * 0.8),
-                  child: child,
-                );
-              },
-              child: content,
-            ),
-          ],
-        ),
+      content = PullToSearch(
+        onSearchTriggered: widget.onOpenSearch!,
+        triggerThreshold: 80.0,
+        child: content,
       );
     }
     

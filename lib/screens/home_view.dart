@@ -10,6 +10,7 @@ import '../providers/cache_provider.dart';
 import '../models/album.dart';
 import '../widgets/offline_indicator.dart';
 import '../widgets/cached_cover_image.dart';
+import '../widgets/pull_to_search.dart';
 import '../services/library_scan_service.dart';
 import 'album_detail_screen.dart';
 
@@ -22,33 +23,23 @@ class HomeView extends StatefulWidget {
   State<HomeView> createState() => _HomeViewState();
 }
 
-class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin {
+class _HomeViewState extends State<HomeView> {
   List<Album>? _recentlyAdded;
   List<Album>? _mostPlayed;
   List<Album>? _random;
   bool _isLoading = true;
   StreamSubscription<LibraryChangeEvent>? _libraryUpdateSubscription;
-  
-  // Pull to search animation
-  late AnimationController _pullController;
-  double _dragOffset = 0.0;
-  bool _isSearchTriggered = false;
 
   @override
   void initState() {
     super.initState();
-    _pullController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 200),
-    );
     _loadData();
     _listenForLibraryUpdates();
   }
-  
+
   @override
   void dispose() {
     _libraryUpdateSubscription?.cancel();
-    _pullController.dispose();
     super.dispose();
   }
   
@@ -108,7 +99,10 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (context) => AlbumDetailScreen(album: album),
+            builder: (context) => AlbumDetailScreen(
+              album: album,
+              onOpenSearch: widget.onOpenSearch,
+            ),
           ),
         );
       },
@@ -124,7 +118,7 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
     Widget listView = ListView(
       children: [
         const SizedBox(height: 16),
-        
+
         // Welcome message with offline indicator
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -159,115 +153,29 @@ class _HomeViewState extends State<HomeView> with SingleTickerProviderStateMixin
           ),
         ),
         const SizedBox(height: 32),
-        
+
         _buildSection('Recently Added', _recentlyAdded),
         _buildSection('Most Played', _mostPlayed),
         _buildSection('Discover', _random),
-        
+
         const SizedBox(height: 80), // Space for player bar
       ],
     );
-    
+
     // Wrap the entire ListView with MoveWindow for desktop
     if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
       listView = MoveWindow(child: listView);
     }
-    
-    // On mobile, add pull-to-search with elastic animation
+
+    // Add pull-to-search wrapper on mobile
     if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
-      return NotificationListener<ScrollNotification>(
-        onNotification: (notification) {
-          if (notification is OverscrollNotification) {
-            if (notification.overscroll < 0) {
-              setState(() {
-                _dragOffset = (_dragOffset - notification.overscroll).clamp(0.0, 150.0);
-              });
-              
-              // Trigger search at threshold
-              if (_dragOffset > 100 && !_isSearchTriggered) {
-                _isSearchTriggered = true;
-                // Haptic feedback
-                HapticFeedback.mediumImpact();
-                widget.onOpenSearch!();
-              }
-            }
-          } else if (notification is ScrollEndNotification) {
-            // Animate spring back on scroll end
-            if (_dragOffset > 0) {
-              _pullController.animateTo(0.0).then((_) {
-                if (mounted) {
-                  setState(() {
-                    _dragOffset = 0.0;
-                    _isSearchTriggered = false;
-                  });
-                }
-              });
-            }
-          }
-          return false;
-        },
-        child: Stack(
-          children: [
-            // Search indicator that appears when pulling
-            if (_dragOffset > 0)
-              Positioned(
-                top: 0,
-                left: 0,
-                right: 0,
-                child: Container(
-                  height: _dragOffset,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
-                  ),
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 200),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        AnimatedRotation(
-                          duration: const Duration(milliseconds: 200),
-                          turns: _dragOffset / 100 * 0.5,
-                          child: Icon(
-                            Icons.search,
-                            size: 32,
-                            color: _dragOffset > 100 
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                          ),
-                        ),
-                        const SizedBox(height: 8),
-                        Text(
-                          _dragOffset > 100 ? 'Release to search' : 'Pull to search',
-                          style: TextStyle(
-                            color: _dragOffset > 100 
-                              ? Theme.of(context).colorScheme.primary
-                              : Theme.of(context).colorScheme.onSurfaceVariant,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-            // Main content with transform
-            AnimatedBuilder(
-              animation: _pullController,
-              builder: (context, child) {
-                final animatedOffset = _dragOffset * (1 - _pullController.value);
-                return Transform.translate(
-                  offset: Offset(0, animatedOffset * 0.8),
-                  child: child,
-                );
-              },
-              child: listView,
-            ),
-          ],
-        ),
+      return PullToSearch(
+        onSearchTriggered: widget.onOpenSearch!,
+        triggerThreshold: 80.0,
+        child: listView,
       );
     }
-    
+
     return listView;
   }
 

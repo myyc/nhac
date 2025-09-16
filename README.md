@@ -14,7 +14,7 @@ It works okay and looks quite nice.
 
 Stuff that isn't available but is planned:
 
-* windows, macos builds - ios is harder for obvious reasons
+* windows builds - ios is harder for obvious reasons
 * proper offline support and better audio caching
 * keyboard navigation, there is little right now (type to search, escape to go back, spacebar to play/pause)
 
