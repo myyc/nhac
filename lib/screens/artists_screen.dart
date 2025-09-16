@@ -4,10 +4,13 @@ import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/artist.dart';
 import '../widgets/cached_cover_image.dart';
+import '../widgets/pull_to_search.dart';
 import 'artist_detail_screen.dart';
 
 class ArtistsScreen extends StatefulWidget {
-  const ArtistsScreen({super.key});
+  final VoidCallback? onOpenSearch;
+
+  const ArtistsScreen({super.key, this.onOpenSearch});
 
   @override
   State<ArtistsScreen> createState() => _ArtistsScreenState();
@@ -78,9 +81,12 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
       );
     }
 
-    return RefreshIndicator(
-      onRefresh: _loadArtists,
-      child: ListView.builder(
+    return PullToSearch(
+      onSearchTriggered: widget.onOpenSearch ?? () {},
+      triggerThreshold: 80.0,
+      child: RefreshIndicator(
+        onRefresh: _loadArtists,
+        child: ListView.builder(
         itemCount: _artists!.length,
         itemBuilder: (context, index) {
           final artist = _artists![index];
@@ -114,12 +120,16 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => ArtistDetailScreen(artist: artist),
+                  builder: (context) => ArtistDetailScreen(
+                    artist: artist,
+                    onOpenSearch: widget.onOpenSearch,
+                  ),
                 ),
               );
             },
           );
         },
+      ),
       ),
     );
   }

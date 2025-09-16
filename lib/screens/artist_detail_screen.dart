@@ -8,13 +8,15 @@ import '../models/artist.dart';
 import '../models/album.dart';
 import 'album_detail_screen.dart';
 import 'app_scaffold.dart';
+import '../widgets/pull_to_search.dart';
 import '../widgets/custom_window_frame.dart';
 import 'dart:io' show Platform;
 
 class ArtistDetailScreen extends StatefulWidget {
   final Artist artist;
+  final VoidCallback? onOpenSearch;
 
-  const ArtistDetailScreen({super.key, required this.artist});
+  const ArtistDetailScreen({super.key, required this.artist, this.onOpenSearch});
 
   @override
   State<ArtistDetailScreen> createState() => _ArtistDetailScreenState();
@@ -88,7 +90,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                 )
               : _albums == null || _albums!.isEmpty
                   ? const Center(child: Text('No albums found'))
-                  : GridView.builder(
+                  : PullToSearch(
+                      onSearchTriggered: widget.onOpenSearch ?? () {},
+                      triggerThreshold: 80.0,
+                      child: GridView.builder(
                       padding: const EdgeInsets.all(16),
                       gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
                         maxCrossAxisExtent: 200,
@@ -105,7 +110,10 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                             Navigator.push(
                               context,
                               MaterialPageRoute(
-                                builder: (context) => AlbumDetailScreen(album: album),
+                                builder: (context) => AlbumDetailScreen(
+                                  album: album,
+                                  onOpenSearch: widget.onOpenSearch,
+                                ),
                               ),
                             );
                           },
@@ -154,6 +162,7 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                         );
                       },
                     ),
+                  ),
     );
     
     // Add ESC key handling for desktop
