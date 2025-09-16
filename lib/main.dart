@@ -11,6 +11,7 @@ import 'providers/player_provider.dart';
 import 'providers/cache_provider.dart';
 import 'providers/theme_provider.dart';
 import 'providers/network_provider.dart';
+import 'providers/admin_provider.dart';
 import 'screens/login_screen.dart';
 import 'screens/home_screen.dart';
 import 'services/database_helper.dart';
@@ -97,6 +98,7 @@ class NhacApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => CacheProvider()),
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
           ChangeNotifierProvider(create: (_) => NetworkProvider()),
+          ChangeNotifierProvider(create: (_) => AdminProvider()),
         ],
         child: Consumer2<ThemeProvider, PlayerProvider>(
           builder: (context, themeProvider, playerProvider, child) {
@@ -221,9 +223,13 @@ class _AuthWrapperState extends State<AuthWrapper> {
             final playerProvider = context.read<PlayerProvider>();
             final cacheProvider = context.read<CacheProvider>();
             final networkProvider = context.read<NetworkProvider>();
+            final adminProvider = context.read<AdminProvider>();
             playerProvider.setApi(authProvider.api!, networkProvider: networkProvider);
             cacheProvider.initialize(authProvider.api!, networkProvider);
-            
+
+            // Initialize admin provider
+            adminProvider.checkAdminRights(authProvider.api!);
+
             // MPRIS is now handled through audio_service, no separate initialization needed
           }
           

@@ -10,37 +10,68 @@ class LibraryScanService {
   Timer? _periodicScanTimer;
   bool _isScanning = false;
   DateTime? _lastScanTime;
-  
+  bool _hasAdminRights = false;
+
   // Configurable scan intervals
   static const Duration _quickScanInterval = Duration(minutes: 5);  // When on WiFi
   static const Duration _normalScanInterval = Duration(minutes: 30); // Default interval
   static const Duration _minScanInterval = Duration(minutes: 2);     // Minimum time between scans
-  
+
   // Stream controller for library change events
   final _libraryChangesController = StreamController<LibraryChangeEvent>.broadcast();
   Stream<LibraryChangeEvent> get libraryChanges => _libraryChangesController.stream;
-  
+
   // Track library state for change detection
   int? _lastAlbumCount;
   String? _lastNewestAlbumId;
   List<String>? _lastAlbumIds;
-  
+
   LibraryScanService({required this.api}) {
     // Start periodic scanning when service is created
-    _startPeriodicScanning();
+    _checkAdminRightsAndStartScanning();
   }
   
+  // Check admin rights and start appropriate scanning
+  Future<void> _checkAdminRightsAndStartScanning() async {
+    try {
+      _hasAdminRights = await api.hasAdminRights();
+      if (kDebugMode) {
+        print('[LibraryScan] Admin rights check result: $_hasAdminRights');
+      }
+    } catch (e) {
+      _hasAdminRights = false;
+      if (kDebugMode) {
+        print('[LibraryScan] Error checking admin rights: $e');
+      }
+    }
+
+    if (_hasAdminRights) {
+      _startPeriodicScanning();
+    } else {
+      if (kDebugMode) {
+        print('[LibraryScan] User lacks admin rights - periodic scanning disabled');
+      }
+    }
+  }
+
   // Start periodic scanning
   void _startPeriodicScanning({Duration? customInterval}) {
+    if (!_hasAdminRights) {
+      if (kDebugMode) {
+        print('[LibraryScan] Cannot start periodic scanning - no admin rights');
+      }
+      return;
+    }
+
     _periodicScanTimer?.cancel();
-    
+
     // Use custom interval or default
     final interval = customInterval ?? _normalScanInterval;
-    
+
     if (kDebugMode) {
       print('[LibraryScan] Starting periodic scanning every ${interval.inMinutes} minutes');
     }
-    
+
     _periodicScanTimer = Timer.periodic(interval, (_) {
       _performPeriodicScan();
     });
@@ -66,6 +97,14 @@ class LibraryScanService {
   
   // Perform a periodic scan if enough time has passed
   Future<void> _performPeriodicScan() async {
+    // Check admin rights before attempting scan
+    if (!_hasAdminRights) {
+      if (kDebugMode) {
+        print('[LibraryScan] Skipping periodic scan - no admin rights');
+      }
+      return;
+    }
+
     // Check if enough time has passed since last scan
     if (_lastScanTime != null) {
       final timeSinceLastScan = DateTime.now().difference(_lastScanTime!);
@@ -76,42 +115,51 @@ class LibraryScanService {
         return;
       }
     }
-    
+
     // Don't start a new scan if one is already running
     if (_isScanning) {
       if (kDebugMode) print('[LibraryScan] Skipping periodic scan - scan already in progress');
       return;
     }
-    
+
     if (kDebugMode) print('[LibraryScan] Starting periodic scan');
     await startBackgroundScan();
   }
   
   // Start a background library scan on app startup
   Future<void> startBackgroundScan() async {
+    // Check admin rights before attempting scan
+    if (!_hasAdminRights) {
+      if (kDebugMode) {
+        print('[LibraryScan] Cannot start scan - no admin rights');
+      }
+      throw Exception('You do not have permission to perform library scans');
+    }
+
     if (_isScanning) {
       if (kDebugMode) print('[LibraryScan] Scan already in progress');
       return;
     }
-    
+
     try {
       // Record scan time
       _lastScanTime = DateTime.now();
-      
+
       // Capture current library state before scan
       await _captureLibraryState();
-      
+
       // Start the scan
       if (kDebugMode) print('[LibraryScan] Starting library scan...');
       await api.startScan();
-      
+
       // Start monitoring scan status
       _isScanning = true;
       _monitorScanStatus();
-      
+
     } catch (e) {
       if (kDebugMode) print('[LibraryScan] Error starting scan: $e');
       _isScanning = false;
+      rethrow;
     }
   }
   
@@ -261,11 +309,19 @@ class LibraryScanService {
   
   // Manual refresh check (can be called by user)
   Future<void> checkForUpdates() async {
+    // Check admin rights before attempting scan
+    if (!_hasAdminRights) {
+      if (kDebugMode) {
+        print('[LibraryScan] Cannot check for updates - no admin rights');
+      }
+      throw Exception('You do not have permission to perform library scans');
+    }
+
     if (_isScanning) {
       if (kDebugMode) print('[LibraryScan] Scan already in progress');
       return;
     }
-    
+
     await startBackgroundScan();
   }
   

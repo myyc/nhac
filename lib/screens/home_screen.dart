@@ -3,8 +3,10 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
+import '../providers/admin_provider.dart';
 import '../widgets/custom_window_frame.dart';
 import '../widgets/macos_window_frame.dart';
+import '../widgets/navigation_menu.dart';
 import 'home_view.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
@@ -135,7 +137,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
-    Widget content = AppScaffold(
+    Widget appContent = AppScaffold(
       child: IndexedStack(
         index: _selectedIndex,
         children: _screens,
@@ -151,47 +153,51 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
 
-    // Mobile content remains unchanged - we'll handle search trigger differently
-    // Remove the GestureDetector as it conflicts with scrolling
+    // For mobile platforms, wrap with navigation menu for swipe access
+    if (Platform.isAndroid || Platform.isIOS) {
+      return NavigationMenu(
+        onClose: () {
+          // Optional: Handle menu close if needed
+        },
+        child: appContent,
+      );
+    }
 
-    // Add keyboard listener for desktop
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      content = RawKeyboardListener(
-        focusNode: FocusNode(),
-        autofocus: true,
-        onKey: (event) {
-          if (event is RawKeyDownEvent) {
-            final primaryFocus = FocusManager.instance.primaryFocus;
-            // Check if no text field is focused
-            if (primaryFocus == null || 
-                primaryFocus.context == null || 
-                primaryFocus.context!.widget is! EditableText) {
-              final key = event.logicalKey;
-              
-              // Handle character input for search
-              final character = event.character;
-              // Check if it's a printable character (not null and not a control character)
-              if (character != null && character.isNotEmpty && !_isControlCharacter(character)) {
-                // Use the actual character based on the current keyboard layout
-                _openSearch(initialQuery: character);
-              }
+    // For desktop platforms, add keyboard listener and window frame
+    Widget desktopContent = RawKeyboardListener(
+      focusNode: FocusNode(),
+      autofocus: true,
+      onKey: (event) {
+        if (event is RawKeyDownEvent) {
+          final primaryFocus = FocusManager.instance.primaryFocus;
+          // Check if no text field is focused
+          if (primaryFocus == null ||
+              primaryFocus.context == null ||
+              primaryFocus.context!.widget is! EditableText) {
+            final key = event.logicalKey;
+
+            // Handle character input for search
+            final character = event.character;
+            // Check if it's a printable character (not null and not a control character)
+            if (character != null && character.isNotEmpty && !_isControlCharacter(character)) {
+              // Use the actual character based on the current keyboard layout
+              _openSearch(initialQuery: character);
             }
           }
-        },
-        child: Platform.isMacOS 
-          ? MacosWindowFrame(
-              showMenuButton: _selectedIndex != 1, // Hide menu on Library tab
-              child: content,
-            )
-          : CustomWindowFrame(
-              showMenuButton: _selectedIndex != 1, // Hide menu on Library tab
-              child: content,
-            ),
-      );
-      return content;
-    }
-    
-    // For mobile platforms, return content without app bar to save screen space
-    return content;
+        }
+      },
+      child: appContent,
+    );
+
+    // Apply appropriate window frame for desktop
+    return Platform.isMacOS
+      ? MacosWindowFrame(
+          showMenuButton: _selectedIndex != 1, // Hide menu on Library tab
+          child: desktopContent,
+        )
+      : CustomWindowFrame(
+          showMenuButton: _selectedIndex != 1, // Hide menu on Library tab
+          child: desktopContent,
+        );
   }
 }

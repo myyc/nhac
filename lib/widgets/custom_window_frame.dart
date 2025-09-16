@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'dart:io' show Platform;
+import '../providers/auth_provider.dart';
+import '../providers/admin_provider.dart';
+import '../services/library_scan_service.dart';
+import 'navigation_menu.dart';
 
 class CustomWindowFrame extends StatefulWidget {
   final Widget child;
@@ -19,22 +24,89 @@ class CustomWindowFrame extends StatefulWidget {
 class _CustomWindowFrameState extends State<CustomWindowFrame> {
   bool _isHoveringButtons = false;
 
-  void _showMenu(BuildContext context) {
-    showMenu(
+  void _showMenu(BuildContext context) async {
+    final RenderBox button = context.findRenderObject() as RenderBox;
+    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
+    final Offset position = button.localToGlobal(Offset.zero, ancestor: overlay);
+
+    // Check admin rights before showing menu
+    final authProvider = context.read<AuthProvider>();
+    final adminProvider = context.read<AdminProvider>();
+    if (authProvider.api != null) {
+      await adminProvider.checkAdminRights(authProvider.api!);
+    }
+
+    final result = await showMenu<String>(
       context: context,
-      position: const RelativeRect.fromLTRB(0, 48, 0, 0),
+      position: RelativeRect.fromLTRB(
+        position.dx,
+        position.dy + button.size.height,
+        position.dx,
+        position.dy + button.size.height,
+      ),
       items: [
-        const PopupMenuItem(
+        PopupMenuItem<String>(
+          value: 'quick-scan',
+          child: NavigationMenuDesktop(
+            context: context,
+            position: position,
+          ),
+        ),
+        const PopupMenuDivider(height: 1),
+        const PopupMenuItem<String>(
           value: 'logout',
           child: Text('Logout'),
         ),
       ],
-    ).then((value) {
-      if (value == 'logout' && mounted) {
-        // Import and call logout from auth provider
-        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
-      }
-    });
+    );
+
+    if (result == 'quick-scan' && mounted) {
+      await _handleQuickScan(context);
+    } else if (result == 'logout' && mounted) {
+      await context.read<AuthProvider>().logout();
+    }
+  }
+
+  Future<void> _handleQuickScan(BuildContext context) async {
+    final authProvider = context.read<AuthProvider>();
+    final adminProvider = context.read<AdminProvider>();
+
+    if (!adminProvider.canScan) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('You do not have permission to perform library scans'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+      return;
+    }
+
+    // Show loading indicator
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(
+        content: Text('Starting library scan...'),
+        duration: Duration(seconds: 2),
+      ),
+    );
+
+    try {
+      final libraryScanService = LibraryScanService(api: authProvider.api!);
+      await libraryScanService.startBackgroundScan();
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Library scan started successfully'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Failed to start scan: ${e.toString()}'),
+          duration: Duration(seconds: 3),
+        ),
+      );
+    }
   }
 
   @override

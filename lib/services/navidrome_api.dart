@@ -307,11 +307,64 @@ class NavidromeApi {
     }
   }
 
+  // Get user information including admin rights
+  Future<Map<String, dynamic>> getUser(String username) async {
+    try {
+      final response = await _request('getUser', {'username': username});
+      final user = response['user'] ?? {};
+
+      return {
+        'username': user['username'],
+        'email': user['email'],
+        'adminRole': user['adminRole'] ?? false,
+        'settingsRole': user['settingsRole'] ?? false,
+        'downloadRole': user['downloadRole'] ?? false,
+        'uploadRole': user['uploadRole'] ?? false,
+        'playlistRole': user['playlistRole'] ?? false,
+        'coverArtRole': user['coverArtRole'] ?? false,
+        'commentRole': user['commentRole'] ?? false,
+        'podcastRole': user['podcastRole'] ?? false,
+        'streamRole': user['streamRole'] ?? true,
+        'jukeboxRole': user['jukeboxRole'] ?? false,
+        'shareRole': user['shareRole'] ?? false,
+        'lastLogin': user['lastLogin'],
+      };
+    } catch (e) {
+      print('Warning: getUser not supported or failed: $e');
+      return {
+        'username': username,
+        'adminRole': false,
+        'settingsRole': false,
+        'downloadRole': false,
+        'uploadRole': false,
+        'playlistRole': false,
+        'coverArtRole': false,
+        'commentRole': false,
+        'podcastRole': false,
+        'streamRole': true,
+        'jukeboxRole': false,
+        'shareRole': false,
+        'lastLogin': null,
+      };
+    }
+  }
+
+  // Check if current user has admin rights
+  Future<bool> hasAdminRights() async {
+    try {
+      final user = await getUser(username);
+      return user['adminRole'] ?? false;
+    } catch (e) {
+      print('Warning: Could not check admin rights: $e');
+      return false;
+    }
+  }
+
   Future<Map<String, dynamic>> getScanStatus() async {
     try {
       final response = await _request('getScanStatus');
       final scanStatus = response['scanStatus'] ?? {};
-      
+
       return {
         'scanning': scanStatus['scanning'] ?? false,
         'count': scanStatus['count'] ?? 0,
