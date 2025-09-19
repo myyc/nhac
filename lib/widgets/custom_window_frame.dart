@@ -6,6 +6,7 @@ import '../providers/auth_provider.dart';
 import '../providers/admin_provider.dart';
 import '../services/library_scan_service.dart';
 import 'navigation_menu.dart';
+import 'custom_menu_dialog.dart';
 
 class CustomWindowFrame extends StatefulWidget {
   final Widget child;
@@ -23,11 +24,16 @@ class CustomWindowFrame extends StatefulWidget {
 
 class _CustomWindowFrameState extends State<CustomWindowFrame> {
   bool _isHoveringButtons = false;
+  bool _isMenuOpen = false;
 
   void _showMenu(BuildContext context) async {
-    final RenderBox button = context.findRenderObject() as RenderBox;
-    final RenderBox overlay = Navigator.of(context).overlay!.context.findRenderObject() as RenderBox;
-    final Offset position = button.localToGlobal(Offset.zero, ancestor: overlay);
+    setState(() {
+      _isMenuOpen = true;
+    });
+
+    // Use simple positioning - align with the right edge like the buttons container
+    // The buttons container has 8px right padding, so menu should be at 8px from right
+    final position = const Offset(0, 0);
 
     // Check admin rights before showing menu
     final authProvider = context.read<AuthProvider>();
@@ -36,78 +42,74 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
       await adminProvider.checkAdminRights(authProvider.api!);
     }
 
-    final result = await showMenu<String>(
+    // Keep the hamburger menu visible while showing menu
+    final result = await showCustomMenu(
       context: context,
-      position: RelativeRect.fromLTRB(
-        position.dx,
-        position.dy + button.size.height,
-        position.dx,
-        position.dy + button.size.height,
-      ),
+      position: position,
+      useRightAlignment: true, // Use right alignment instead of calculations
       items: [
-        PopupMenuItem<String>(
-          value: 'quick-scan',
-          child: NavigationMenuDesktop(
-            context: context,
-            position: position,
-          ),
-        ),
-        const PopupMenuDivider(height: 1),
-        const PopupMenuItem<String>(
-          value: 'logout',
-          child: Text('Logout'),
+        NavigationMenuDesktop(
+          context: context,
+          position: position,
+          onQuickScan: () async {
+            Navigator.of(context).pop('quick-scan');
+          },
+          onLogout: () async {
+            Navigator.of(context).pop('logout');
+          },
         ),
       ],
     );
 
+    setState(() {
+      _isMenuOpen = false;
+    });
+
     if (result == 'quick-scan' && mounted) {
-      await _handleQuickScan(context);
+      final authProvider = context.read<AuthProvider>();
+      final adminProvider = context.read<AdminProvider>();
+
+      if (!adminProvider.canScan) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('You do not have permission to perform library scans'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+        return;
+      }
+
+      // Show loading indicator
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Starting library scan...'),
+          duration: Duration(seconds: 2),
+        ),
+      );
+
+      try {
+        final libraryScanService = LibraryScanService(api: authProvider.api!);
+        await libraryScanService.startBackgroundScan();
+
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Library scan started successfully'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      } catch (e) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Failed to start scan: ${e.toString()}'),
+            duration: Duration(seconds: 3),
+          ),
+        );
+      }
     } else if (result == 'logout' && mounted) {
       await context.read<AuthProvider>().logout();
     }
   }
 
-  Future<void> _handleQuickScan(BuildContext context) async {
-    final authProvider = context.read<AuthProvider>();
-    final adminProvider = context.read<AdminProvider>();
-
-    if (!adminProvider.canScan) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('You do not have permission to perform library scans'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-      return;
-    }
-
-    // Show loading indicator
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(
-        content: Text('Starting library scan...'),
-        duration: Duration(seconds: 2),
-      ),
-    );
-
-    try {
-      final libraryScanService = LibraryScanService(api: authProvider.api!);
-      await libraryScanService.startBackgroundScan();
-
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Library scan started successfully'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('Failed to start scan: ${e.toString()}'),
-          duration: Duration(seconds: 3),
-        ),
-      );
-    }
-  }
 
   @override
   Widget build(BuildContext context) {
@@ -129,7 +131,7 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
             onEnter: (_) => setState(() => _isHoveringButtons = true),
             onExit: (_) => setState(() => _isHoveringButtons = false),
             child: AnimatedOpacity(
-              opacity: _isHoveringButtons ? 1.0 : 0.0,
+              opacity: _isHoveringButtons || _isMenuOpen ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: Container(
                 width: widget.showMenuButton ? 96 : 56,

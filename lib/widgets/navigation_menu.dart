@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/admin_provider.dart';
 import '../services/library_scan_service.dart';
+import 'menu_item.dart';
 
 class NavigationMenu extends StatefulWidget {
   final Widget child;
@@ -95,15 +96,17 @@ class _NavigationMenuState extends State<NavigationMenu>
   }
 
   void _handleHorizontalDragStart(DragStartDetails details) {
-    // Only start drag for menu if we're swiping from the very left edge (first 20px)
+    // Only start drag for menu if we're swiping from the left edge (first 40px)
     // This prevents interference with normal horizontal scrolling/navigation
-    if (!_isMenuOpen && details.localPosition.dx < 20) {
+    if (!_isMenuOpen && details.localPosition.dx < 40) {
       _isDragging = true;
       _dragStartX = details.localPosition.dx;
+      print('DEBUG: Starting menu drag from edge');
     } else if (_isMenuOpen && details.localPosition.dx > MediaQuery.of(context).size.width * 0.7) {
       // Allow closing menu by swiping from the right edge when menu is open
       _isDragging = true;
       _dragStartX = details.localPosition.dx;
+      print('DEBUG: Starting menu close drag');
     }
   }
 
@@ -136,7 +139,7 @@ class _NavigationMenuState extends State<NavigationMenu>
 
     _isDragging = false;
 
-    final threshold = MediaQuery.of(context).size.width * 0.25; // Lower threshold for easier opening
+    final threshold = MediaQuery.of(context).size.width * 0.2; // Lower threshold for easier opening
 
     if (!_isMenuOpen && _currentDragX > threshold) {
       // User dragged far enough to open menu
@@ -217,7 +220,7 @@ class _NavigationMenuState extends State<NavigationMenu>
       width: MediaQuery.of(context).size.width * 0.8,
       height: MediaQuery.of(context).size.height,
       decoration: BoxDecoration(
-        color: theme.colorScheme.surface,
+        color: Theme.of(context).scaffoldBackgroundColor,
         boxShadow: [
           BoxShadow(
             color: Colors.black.withOpacity(0.1),
@@ -225,6 +228,12 @@ class _NavigationMenuState extends State<NavigationMenu>
             offset: const Offset(2, 0),
           ),
         ],
+        border: Border(
+          right: BorderSide(
+            color: Colors.black.withOpacity(0.15),
+            width: 1,
+          ),
+        ),
       ),
       child: SafeArea(
         child: Column(
@@ -263,39 +272,27 @@ class _NavigationMenuState extends State<NavigationMenu>
                 children: [
                   // Quick Scan Option
                   ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: adminProvider.canScan
-                            ? theme.colorScheme.primaryContainer
-                            : theme.colorScheme.surfaceVariant,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.scanner,
-                        size: 20,
-                        color: adminProvider.canScan
-                            ? theme.colorScheme.onPrimaryContainer
-                            : theme.colorScheme.onSurfaceVariant,
-                      ),
-                    ),
                     title: Text(
-                      'Navidrome Quick Scan',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
+                      'Quick Scan Library',
+                      style: theme.textTheme.bodyMedium?.copyWith(
                         color: adminProvider.canScan
                             ? theme.colorScheme.onSurface
                             : theme.colorScheme.onSurface.withOpacity(0.4),
                       ),
                     ),
                     subtitle: adminProvider.isLoading
-                        ? const Text('Checking permissions...')
+                        ? Text(
+                            'Checking permissions...',
+                            style: TextStyle(
+                              color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              fontSize: 12,
+                            ),
+                          )
                         : !adminProvider.canScan
                             ? Text(
                                 'Admin rights required',
                                 style: TextStyle(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.4),
+                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
                                   fontSize: 12,
                                 ),
                               )
@@ -314,30 +311,16 @@ class _NavigationMenuState extends State<NavigationMenu>
 
                   // Logout Option
                   ListTile(
-                    leading: Container(
-                      width: 40,
-                      height: 40,
-                      decoration: BoxDecoration(
-                        color: theme.colorScheme.errorContainer,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Icon(
-                        Icons.logout,
-                        size: 20,
-                        color: theme.colorScheme.onErrorContainer,
-                      ),
-                    ),
                     title: Text(
                       'Log Out',
-                      style: theme.textTheme.titleMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onErrorContainer,
+                      style: theme.textTheme.bodyMedium?.copyWith(
+                        color: theme.colorScheme.onSurface,
                       ),
                     ),
                     subtitle: Text(
                       'Sign out of your account',
                       style: TextStyle(
-                        color: theme.colorScheme.onErrorContainer.withOpacity(0.7),
+                        color: theme.colorScheme.onSurface.withOpacity(0.7),
                         fontSize: 12,
                       ),
                     ),
@@ -370,21 +353,30 @@ class _NavigationMenuState extends State<NavigationMenu>
         // Main content
         Stack(
           children: [
-            // Left edge swipe indicator (subtle)
+            // Left edge swipe area with visual feedback
             Positioned(
               left: 0,
               top: 0,
               bottom: 0,
-              width: 4,
-              child: Container(
-                decoration: BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.centerLeft,
-                    end: Alignment.centerRight,
-                    colors: [
-                      Theme.of(context).colorScheme.primary.withOpacity(0.3),
-                      Colors.transparent,
-                    ],
+              width: 40,
+              child: GestureDetector(
+                onTap: () {
+                  // Quick tap on edge also opens menu
+                  if (!_isMenuOpen) {
+                    _openMenu();
+                  }
+                },
+                child: Container(
+                  decoration: BoxDecoration(
+                    gradient: LinearGradient(
+                      begin: Alignment.centerLeft,
+                      end: Alignment.centerRight,
+                      colors: [
+                        Theme.of(context).colorScheme.primary.withOpacity(0.1),
+                        Theme.of(context).colorScheme.primary.withOpacity(0.05),
+                        Colors.transparent,
+                      ],
+                    ),
                   ),
                 ),
               ),
@@ -405,7 +397,15 @@ class _NavigationMenuState extends State<NavigationMenu>
             animation: _backdropAnimation,
             builder: (context, child) {
               return GestureDetector(
-                onTap: _closeMenu,
+                onTapUp: (details) {
+                  // Check if tap is outside the menu area
+                  final screenWidth = MediaQuery.of(context).size.width;
+                  final menuWidth = screenWidth * 0.8;
+
+                  if (details.localPosition.dx > menuWidth) {
+                    _closeMenu();
+                  }
+                },
                 child: Container(
                   width: MediaQuery.of(context).size.width,
                   height: MediaQuery.of(context).size.height,
@@ -449,12 +449,30 @@ class _NavigationMenuState extends State<NavigationMenu>
 class NavigationMenuDesktop extends StatelessWidget {
   final BuildContext context;
   final Offset position;
+  final VoidCallback? onQuickScan;
+  final VoidCallback? onLogout;
 
   const NavigationMenuDesktop({
     super.key,
     required this.context,
     required this.position,
+    this.onQuickScan,
+    this.onLogout,
   });
+
+  // Custom popup menu item with hover effects
+  Widget _buildMenuItem({
+    required String value,
+    required Widget child,
+    bool enabled = true,
+    VoidCallback? onTap,
+  }) {
+    return MenuItem(
+      onTap: onTap,
+      enabled: enabled,
+      child: child,
+    );
+  }
 
   Future<void> _performQuickScan() async {
     final authProvider = context.read<AuthProvider>();
@@ -517,59 +535,26 @@ class NavigationMenuDesktop extends StatelessWidget {
       mainAxisSize: MainAxisSize.min,
       children: [
         // Quick Scan Option
-        PopupMenuItem<String>(
+        _buildMenuItem(
           value: 'quick-scan',
           enabled: adminProvider.canScan,
+          onTap: adminProvider.canScan ? onQuickScan : null,
           child: Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: adminProvider.canScan
-                      ? theme.colorScheme.primaryContainer
-                      : theme.colorScheme.surfaceVariant,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Icon(
-                  Icons.scanner,
+              if (!adminProvider.canScan && !adminProvider.isLoading)
+                Icon(
+                  Icons.lock,
                   size: 16,
-                  color: adminProvider.canScan
-                      ? theme.colorScheme.onPrimaryContainer
-                      : theme.colorScheme.onSurfaceVariant,
+                  color: theme.colorScheme.onSurface.withOpacity(0.4),
                 ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Navidrome Quick Scan',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: adminProvider.canScan
-                            ? theme.colorScheme.onSurface
-                            : theme.colorScheme.onSurface.withOpacity(0.4),
-                      ),
-                    ),
-                    if (adminProvider.isLoading)
-                      Text(
-                        'Checking permissions...',
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.6),
-                          fontSize: 11,
-                        ),
-                      )
-                    else if (!adminProvider.canScan)
-                      Text(
-                        'Admin rights required',
-                        style: TextStyle(
-                          color: theme.colorScheme.onSurface.withOpacity(0.4),
-                          fontSize: 11,
-                        ),
-                      ),
-                  ],
+                child: Text(
+                  'Quick Scan Library',
+                  style: TextStyle(
+                    color: adminProvider.canScan
+                        ? null
+                        : theme.colorScheme.onSurface.withOpacity(0.4),
+                  ),
                 ),
               ),
             ],
@@ -577,46 +562,20 @@ class NavigationMenuDesktop extends StatelessWidget {
         ),
 
         // Divider
-        const PopupMenuDivider(height: 1),
+        Container(
+          height: 1,
+          color: theme.colorScheme.onSurface.withOpacity(0.1),
+        ),
 
         // Logout Option
-        PopupMenuItem<String>(
+        _buildMenuItem(
           value: 'logout',
+          onTap: onLogout,
           child: Row(
             children: [
-              Container(
-                width: 32,
-                height: 32,
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.errorContainer,
-                  borderRadius: BorderRadius.circular(6),
-                ),
-                child: Icon(
-                  Icons.logout,
-                  size: 16,
-                  color: theme.colorScheme.onErrorContainer,
-                ),
-              ),
-              const SizedBox(width: 12),
               Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      'Log Out',
-                      style: theme.textTheme.bodyMedium?.copyWith(
-                        fontWeight: FontWeight.w500,
-                        color: theme.colorScheme.onErrorContainer,
-                      ),
-                    ),
-                    Text(
-                      'Sign out of your account',
-                      style: TextStyle(
-                        color: theme.colorScheme.onErrorContainer.withOpacity(0.7),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
+                child: Text(
+                  'Log Out',
                 ),
               ),
             ],

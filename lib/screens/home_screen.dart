@@ -33,7 +33,8 @@ class _HomeScreenState extends State<HomeScreen> {
     // Check if the character is a control character (non-printable)
     final codeUnit = character.codeUnitAt(0);
     // Control characters are typically in the range 0x00-0x1F and 0x7F-0x9F
-    return codeUnit < 0x20 || (codeUnit >= 0x7F && codeUnit <= 0x9F);
+    // Also explicitly treat space (0x20) as a control character to prevent search initiation
+    return codeUnit < 0x20 || codeUnit == 0x20 || (codeUnit >= 0x7F && codeUnit <= 0x9F);
   }
 
   void _openSearch({String? initialQuery}) {

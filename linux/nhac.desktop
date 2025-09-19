@@ -3,7 +3,7 @@ Version=1.0
 Type=Application
 Name=Nhac
 Comment=Flutter music player application
-Exec=nhac
+Exec=env MPV_NO_LUA=1 nhac
 Icon=dev.myyc.nhac
 Terminal=false
 Categories=AudioVideo;Audio;Music;Player;
