@@ -1,6 +1,8 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:crypto/crypto.dart';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../models/artist.dart';
 import '../models/album.dart';
@@ -19,6 +21,11 @@ class NavidromeApi {
   String? _cachedToken;
   DateTime? _cacheTime;
   static const Duration _cacheExpiry = Duration(minutes: 30);
+
+  // Retry configuration
+  static const int _maxRetries = 3;
+  static const Duration _initialDelay = Duration(milliseconds: 500);
+  static const Duration _requestTimeout = Duration(seconds: 15);
 
   NavidromeApi({
     required this.baseUrl,
@@ -79,29 +86,79 @@ class NavidromeApi {
     return Uri.parse('$baseUrl/rest/$endpoint').replace(queryParameters: params);
   }
 
-  Future<Map<String, dynamic>> _request(String endpoint, [Map<String, String>? params]) async {
-    final uri = _buildUri(endpoint, params);
-    final response = await http.get(uri);
-
-    if (response.statusCode != 200) {
-      throw Exception('HTTP error: ${response.statusCode}');
-    }
-
-    final data = json.decode(response.body);
-    final subsonicResponse = data['subsonic-response'];
-    
-    if (subsonicResponse['status'] != 'ok') {
-      final error = subsonicResponse['error'];
-      throw Exception('API error: ${error['message']} (code: ${error['code']})');
-    }
-
-    return subsonicResponse;
+  /// Clear cached auth params to force regeneration on next request
+  void _refreshAuthParams() {
+    _cachedSalt = null;
+    _cachedToken = null;
+    _cacheTime = null;
   }
 
-  Future<bool> ping() async {
+  /// Check if an error is retryable (transient network issues)
+  bool _isRetryable(dynamic error) {
+    final errorStr = error.toString().toLowerCase();
+    return errorStr.contains('socketexception') ||
+        errorStr.contains('timeoutexception') ||
+        errorStr.contains('connection') ||
+        errorStr.contains('handshakeexception') ||
+        errorStr.contains('http error: 5'); // 5xx server errors
+  }
+
+  Future<Map<String, dynamic>> _request(String endpoint, [Map<String, String>? params]) async {
+    int attempts = 0;
+    Duration delay = _initialDelay;
+    Object? lastError;
+
+    while (true) {
+      try {
+        final uri = _buildUri(endpoint, params);
+        final response = await http.get(uri).timeout(_requestTimeout);
+
+        if (response.statusCode != 200) {
+          throw Exception('HTTP error: ${response.statusCode}');
+        }
+
+        final data = json.decode(response.body);
+        final subsonicResponse = data['subsonic-response'];
+
+        if (subsonicResponse['status'] != 'ok') {
+          final error = subsonicResponse['error'];
+          throw Exception('API error: ${error['message']} (code: ${error['code']})');
+        }
+
+        return subsonicResponse;
+      } catch (e) {
+        attempts++;
+        lastError = e;
+
+        if (!_isRetryable(e) || attempts >= _maxRetries) {
+          rethrow;
+        }
+
+        if (kDebugMode) {
+          print('[NavidromeApi] Request failed (attempt $attempts): $e, retrying in ${delay.inMilliseconds}ms');
+        }
+
+        await Future.delayed(delay);
+        delay *= 2; // Exponential backoff
+
+        // Refresh auth params on retry in case token expired
+        if (attempts > 1) {
+          _refreshAuthParams();
+        }
+      }
+    }
+  }
+
+  /// Ping server to check if it's reachable (used for health checks)
+  /// Uses a shorter timeout and no retry for quick health checks
+  Future<bool> ping({Duration timeout = const Duration(seconds: 5)}) async {
     try {
-      await _request('ping');
-      return true;
+      final uri = _buildUri('ping', null);
+      final response = await http.get(uri).timeout(timeout);
+      if (response.statusCode != 200) return false;
+      final data = json.decode(response.body);
+      final subsonicResponse = data['subsonic-response'];
+      return subsonicResponse['status'] == 'ok';
     } catch (e) {
       return false;
     }

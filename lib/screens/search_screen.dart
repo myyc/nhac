@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
@@ -80,6 +81,9 @@ class _SearchScreenState extends State<SearchScreen> {
     }
 
     final api = context.read<AuthProvider>().api;
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
+
     if (api == null) return;
 
     setState(() {
@@ -88,8 +92,17 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final results = await api.search3(query);
-      
+      Map<String, dynamic> results;
+
+      // Use offline search when offline
+      if (networkProvider.isOffline) {
+        if (kDebugMode) print('[SearchScreen] Searching offline for: $query');
+        results = await cacheProvider.searchOffline(query);
+      } else {
+        // Online search
+        results = await api.search3(query);
+      }
+
       if (mounted) {
         setState(() {
           _artists = results['artists'];

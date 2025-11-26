@@ -8,6 +8,7 @@ import '../widgets/macos_window_frame.dart';
 import 'home_view.dart';
 import 'search_screen.dart';
 import 'library_screen.dart';
+import 'settings_screen.dart';
 import 'app_scaffold.dart';
 
 class HomeScreen extends StatefulWidget {
@@ -122,13 +123,31 @@ class _HomeScreenState extends State<HomeScreen> {
       position: position,
       items: [
         const PopupMenuItem<String>(
+          value: 'settings',
+          child: Row(
+            children: [
+              Icon(Icons.settings),
+              SizedBox(width: 8),
+              Text('Settings'),
+            ],
+          ),
+        ),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(
           value: 'logout',
           child: Text('Logout'),
         ),
       ],
     );
 
-    if (result == 'logout' && mounted) {
+    if (result == 'settings' && mounted) {
+      await Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (context) => const SettingsScreen(),
+        ),
+      );
+    } else if (result == 'logout' && mounted) {
       await context.read<AuthProvider>().logout();
     }
   }

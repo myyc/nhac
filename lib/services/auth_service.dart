@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'navidrome_api.dart';
 
@@ -34,16 +35,27 @@ class AuthService {
     final password = prefs.getString(_passwordKey);
 
     if (serverUrl != null && username != null && password != null) {
+      // Always create API instance if credentials exist
+      // Don't validate ping on startup - allow offline access
       _api = NavidromeApi(
         baseUrl: serverUrl,
         username: username,
         password: password,
       );
-      
-      final isValid = await _api!.ping();
-      if (!isValid) {
-        _api = null;
-        await clearCredentials();
+
+      // Only validate credentials if we have network connectivity
+      // This allows the app to work offline once authenticated
+      try {
+        final isValid = await _api!.ping();
+        if (!isValid) {
+          // Only clear credentials if ping fails due to auth, not network issues
+          // For now, keep the API instance and let individual operations handle offline mode
+        }
+      } catch (e) {
+        // Network error - don't clear credentials, allow offline mode
+        if (kDebugMode) {
+          print('[AuthService] Network error during ping, allowing offline mode: $e');
+        }
       }
     }
   }

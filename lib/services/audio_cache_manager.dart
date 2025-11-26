@@ -33,12 +33,29 @@ class AudioCacheManager {
   final Map<String, AudioCacheEntry> _cache = {};
   Timer? _cleanupTimer;
   
+  bool _isSuspended = false;
+
   void initialize() {
     // Run cleanup every 5 minutes
     _cleanupTimer?.cancel();
     _cleanupTimer = Timer.periodic(const Duration(minutes: 5), (_) {
       _cleanupExpired();
     });
+  }
+
+  /// Suspend cleanup timer (for battery optimization)
+  void suspend() {
+    _isSuspended = true;
+    _cleanupTimer?.cancel();
+    _cleanupTimer = null;
+    print('[AudioCache] Suspended - cleanup timer stopped');
+  }
+
+  /// Resume cleanup timer
+  void resume() {
+    _isSuspended = false;
+    initialize();
+    print('[AudioCache] Resumed - cleanup timer restarted');
   }
   
   Future<AudioPlayer?> preloadTrack(String songId, String streamUrl) async {

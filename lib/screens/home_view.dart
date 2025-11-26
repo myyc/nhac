@@ -7,10 +7,12 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/album.dart';
 import '../widgets/offline_indicator.dart';
 import '../widgets/cached_cover_image.dart';
 import '../widgets/pull_to_search.dart';
+import '../widgets/pull_to_refresh.dart';
 import '../services/library_scan_service.dart';
 import 'album_detail_screen.dart';
 
@@ -37,6 +39,19 @@ class _HomeViewState extends State<HomeView> {
     _listenForLibraryUpdates();
   }
 
+  Future<void> _handleRefresh() async {
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
+
+    if (!networkProvider.isOffline) {
+      // Sync library when refreshing
+      await cacheProvider.syncRecentlyAdded();
+    }
+
+    // Reload data
+    await _loadData(forceRefresh: true);
+  }
+
   @override
   void dispose() {
     _libraryUpdateSubscription?.cancel();
@@ -53,8 +68,11 @@ class _HomeViewState extends State<HomeView> {
     });
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool forceRefresh = false}) async {
     final api = context.read<AuthProvider>().api;
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
+
     if (api == null) return;
 
     setState(() {
@@ -62,17 +80,49 @@ class _HomeViewState extends State<HomeView> {
     });
 
     try {
-      final futures = await Future.wait([
-        api.getAlbumList2(type: 'newest', size: 18),
-        api.getAlbumList2(type: 'frequent', size: 18),
-        api.getAlbumList2(type: 'random', size: 18),
-      ]);
+      List<Album> recentlyAdded, mostPlayed, random;
+
+      // Try to use cached data first, especially when offline
+      if (!forceRefresh && networkProvider.isOffline) {
+        // When offline, try to get from cache
+        recentlyAdded = await cacheProvider.getRecentlyAdded(forceRefresh: false);
+
+        // If no recently added, try to get all albums and show newest
+        if (recentlyAdded.isEmpty) {
+          final allAlbums = await cacheProvider.getAlbums(forceRefresh: false);
+          // Sort by id descending as a proxy for recently added
+          allAlbums.sort((a, b) => b.id.compareTo(a.id));
+          recentlyAdded = allAlbums.take(18).toList();
+        }
+
+        mostPlayed = []; // Not cached yet
+        random = []; // Not cached yet
+      } else {
+        // When online, try cache first then API
+        try {
+          recentlyAdded = await cacheProvider.getRecentlyAdded(forceRefresh: forceRefresh);
+        } catch (e) {
+          recentlyAdded = await api.getAlbumList2(type: 'newest', size: 18);
+        }
+
+        try {
+          mostPlayed = await api.getAlbumList2(type: 'frequent', size: 18);
+        } catch (e) {
+          mostPlayed = [];
+        }
+
+        try {
+          random = await api.getAlbumList2(type: 'random', size: 18);
+        } catch (e) {
+          random = [];
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _recentlyAdded = futures[0];
-          _mostPlayed = futures[1];
-          _random = futures[2];
+          _recentlyAdded = recentlyAdded;
+          _mostPlayed = mostPlayed;
+          _random = random;
           _isLoading = false;
         });
       }
@@ -138,7 +188,6 @@ class _HomeViewState extends State<HomeView> {
                       ),
                     ),
                   ),
-                  const OfflineIndicator(),
                 ],
               ),
               const SizedBox(height: 4),
@@ -167,16 +216,19 @@ class _HomeViewState extends State<HomeView> {
       listView = MoveWindow(child: listView);
     }
 
-    // Add pull-to-search wrapper on mobile
+    // On mobile, use PullToSearch only (no refresh - search replaces it)
     if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
       return PullToSearch(
         onSearchTriggered: widget.onOpenSearch!,
-        triggerThreshold: 80.0,
         child: listView,
       );
     }
 
-    return listView;
+    // On desktop, use PullToRefresh
+    return PullToRefresh(
+      onRefresh: _handleRefresh,
+      child: listView,
+    );
   }
 
   String _getGreeting() {

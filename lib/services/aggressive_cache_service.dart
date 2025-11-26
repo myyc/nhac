@@ -14,13 +14,14 @@ import '../providers/network_provider.dart';
 class AggressiveCacheService {
   static const Duration _quickSyncInterval = Duration(minutes: 2);  // Aggressive on WiFi
   static const Duration _fullSyncInterval = Duration(hours: 24);    // Fallback
-  
+
   final NavidromeApi api;
   final NetworkProvider networkProvider;
-  
+
   int _syncProgress = 0;
   int _syncTotal = 0;
   bool _isSyncing = false;
+  bool _isSuspended = false;
   Timer? _syncTimer;
   
   final _progressController = StreamController<SyncProgress>.broadcast();
@@ -56,14 +57,28 @@ class AggressiveCacheService {
   void _onNetworkChanged() {
     if (networkProvider.isOnWifi) {
       // Switched to WiFi - sync immediately
-      if (kDebugMode) debugPrint('[AggressiveCache] WiFi detected - starting aggressive sync');
       _startPeriodicSync();
       smartSync();
     }
   }
   
+  /// Suspend all background sync tasks (for battery optimization)
+  void suspend() {
+    _isSuspended = true;
+    _syncTimer?.cancel();
+    _syncTimer = null;
+    if (kDebugMode) debugPrint('[AggressiveCache] Suspended - timers stopped');
+  }
+
+  /// Resume background sync tasks
+  void resume() {
+    _isSuspended = false;
+    _startPeriodicSync();
+    if (kDebugMode) debugPrint('[AggressiveCache] Resumed - timers restarted');
+  }
+
   Future<void> smartSync() async {
-    if (_isSyncing) return;
+    if (_isSyncing || _isSuspended) return;
     if (networkProvider.isOffline) return;
     
     _isSyncing = true;
@@ -77,11 +92,9 @@ class AggressiveCacheService {
         final needsFull = await _checkIfFullSyncNeeded();
         
         if (needsFull) {
-          if (kDebugMode) debugPrint('[AggressiveCache] Starting FULL library sync');
           await _syncEverything();
           await _downloadAllCoverArt();
         } else {
-          if (kDebugMode) debugPrint('[AggressiveCache] Quick sync - checking for changes');
           await _syncRecentlyAdded(size: 100);
           await _downloadMissingCoverArt();
         }
@@ -98,14 +111,12 @@ class AggressiveCacheService {
       // Check if cache is empty
       final cachedAlbums = await DatabaseHelper.getAlbums();
       if (cachedAlbums.isEmpty) {
-        if (kDebugMode) debugPrint('[AggressiveCache] Cache empty - need full sync');
         return true;
       }
       
       // Check if last full sync was too long ago
       final needsSync = await DatabaseHelper.needsSync('full_library', _fullSyncInterval);
       if (needsSync) {
-        if (kDebugMode) debugPrint('[AggressiveCache] Haven\'t synced in 24h - need full sync');
         return true;
       }
       
@@ -122,14 +133,12 @@ class AggressiveCacheService {
         }
         
         if (newCount > 5) {
-          if (kDebugMode) debugPrint('[AggressiveCache] Found $newCount new albums - need full sync');
           return true;
         }
       }
       
       return false;
     } catch (e) {
-      if (kDebugMode) debugPrint('[AggressiveCache] Error checking sync need: $e');
       return true; // When in doubt, sync
     }
   }
@@ -140,12 +149,10 @@ class AggressiveCacheService {
     
     try {
       // First, get all artists
-      if (kDebugMode) debugPrint('[AggressiveCache] Fetching all artists...');
       final artists = await api.getArtists();
       await DatabaseHelper.insertArtists(artists);
       
       // Get ALL albums - no limit!
-      if (kDebugMode) debugPrint('[AggressiveCache] Fetching all albums...');
       final allAlbums = <Album>[];
       int offset = 0;
       const batchSize = 100;
@@ -162,22 +169,18 @@ class AggressiveCacheService {
         allAlbums.addAll(albums);
         await DatabaseHelper.insertAlbums(albums);
         
-        if (kDebugMode) debugPrint('[AggressiveCache] Fetched ${allAlbums.length} albums so far...');
         
         offset += batchSize;
         
         // Prevent infinite loop
         if (offset > 10000) {
-          if (kDebugMode) debugPrint('[AggressiveCache] Safety limit reached');
           break;
         }
       }
       
-      if (kDebugMode) debugPrint('[AggressiveCache] Total albums: ${allAlbums.length}');
       _syncTotal = allAlbums.length;
       
       // Now fetch all songs for each album
-      if (kDebugMode) debugPrint('[AggressiveCache] Fetching songs for all albums...');
       for (int i = 0; i < allAlbums.length; i++) {
         final album = allAlbums[i];
         
@@ -218,10 +221,8 @@ class AggressiveCacheService {
         );
       }
       
-      if (kDebugMode) debugPrint('[AggressiveCache] Full sync completed!');
       
     } catch (e) {
-      if (kDebugMode) debugPrint('[AggressiveCache] Error during full sync: $e');
       rethrow;
     }
   }
@@ -261,14 +262,12 @@ class AggressiveCacheService {
       );
       
     } catch (e) {
-      if (kDebugMode) debugPrint('[AggressiveCache] Error syncing recently added: $e');
     }
   }
   
   Future<void> _downloadAllCoverArt() async {
     if (!networkProvider.isOnWifi) return;
     
-    if (kDebugMode) debugPrint('[AggressiveCache] Starting cover art download...');
     
     try {
       final albums = await DatabaseHelper.getAlbums();
@@ -289,7 +288,6 @@ class AggressiveCacheService {
       
       for (int i = 0; i < albums.length; i += batchSize) {
         if (!networkProvider.isOnWifi) {
-          if (kDebugMode) debugPrint('[AggressiveCache] Lost WiFi - stopping cover download');
           break;
         }
         
@@ -323,7 +321,6 @@ class AggressiveCacheService {
         await Future.delayed(const Duration(milliseconds: 200));
       }
       
-      if (kDebugMode) debugPrint('[AggressiveCache] Cover art download completed: $completed/$total');
       
     } catch (e) {
       if (kDebugMode) debugPrint('[AggressiveCache] Error downloading cover art: $e');
@@ -354,11 +351,9 @@ class AggressiveCacheService {
       }
       
       if (downloaded > 0) {
-        if (kDebugMode) debugPrint('[AggressiveCache] Downloaded $downloaded missing covers');
       }
       
     } catch (e) {
-      if (kDebugMode) debugPrint('[AggressiveCache] Error downloading missing covers: $e');
     }
   }
   

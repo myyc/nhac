@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/album.dart';
 import '../widgets/cached_cover_image.dart';
 import '../widgets/pull_to_search.dart';
@@ -36,7 +37,8 @@ class _AlbumsScreenState extends State<AlbumsScreen> {
     });
 
     try {
-      final albums = await cacheProvider.getAlbums();
+      // Use offline-aware method when offline
+      final albums = await cacheProvider.getAlbumsOffline();
       if (mounted) {
         setState(() {
           _albums = albums;

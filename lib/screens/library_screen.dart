@@ -7,8 +7,10 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/album.dart';
 import '../widgets/pull_to_search.dart';
+import '../widgets/pull_to_refresh.dart';
 import '../services/library_scan_service.dart';
 import 'album_detail_screen.dart';
 
@@ -56,17 +58,31 @@ class _LibraryScreenState extends State<LibraryScreen> {
     });
   }
 
+  Future<void> _handleRefresh() async {
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
+
+    if (!networkProvider.isOffline) {
+      // Sync library when refreshing
+      await cacheProvider.syncRecentlyAdded();
+    }
+
+    // Reload data
+    await _loadAlbums(forceRefresh: true);
+  }
+
   Future<void> _loadAlbums({bool forceRefresh = false}) async {
     final cacheProvider = context.read<CacheProvider>();
-    
+    final networkProvider = context.read<NetworkProvider>();
+
     setState(() {
       _isLoading = true;
       _error = null;
     });
 
     try {
-      // Load all albums from cache or API
-      final albums = await cacheProvider.getAlbums(forceRefresh: forceRefresh);
+      // Load all albums from cache or API, with offline awareness
+      final albums = await cacheProvider.getAlbumsOffline(forceRefresh: forceRefresh && !networkProvider.isOffline);
       
       // Group albums by artist
       final albumsByArtist = <String, List<Album>>{};
@@ -212,9 +228,13 @@ class _LibraryScreenState extends State<LibraryScreen> {
       itemBuilder: (context, index) => _buildAlbumCard(allAlbums[index]),
     );
     
-    Widget content = (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
-        ? MoveWindow(child: gridView)
-        : gridView;
+    // Always wrap with PullToRefresh
+    Widget content = PullToRefresh(
+      onRefresh: _handleRefresh,
+      child: (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
+          ? MoveWindow(child: gridView)
+          : gridView,
+    );
 
     // Add pull-to-search wrapper on mobile
     if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {

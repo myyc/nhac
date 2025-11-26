@@ -9,9 +9,11 @@ import '../services/navidrome_api.dart';
 import '../services/audio_cache_manager.dart';
 import '../services/audio_handler.dart';
 import '../services/cache_service.dart';
-import '../services/audio_file_cache_service.dart';
 import '../services/color_extraction_service.dart';
+import '../services/performance_config.dart';
+import '../services/database_helper.dart';
 import '../providers/network_provider.dart';
+import '../services/activity_coordinator.dart';
 import '../main.dart' as app_main;
 
 class PlayerProvider extends ChangeNotifier {
@@ -20,9 +22,10 @@ class PlayerProvider extends ChangeNotifier {
   final ColorExtractionService _colorExtractionService = ColorExtractionService();
   NavidromeApi? _api;
   CacheService? _cacheService;
-  AudioFileCacheService? _audioFileCacheService;
   NetworkProvider? _networkProvider;
+  ActivityCoordinator? _activityCoordinator;
   Timer? _preloadTimer;
+  Timer? _notificationTimer; // For debouncing notifications
   ConcatenatingAudioSource? _playlist;
   StreamSubscription? _mediaItemSubscription;
   StreamSubscription? _playerStateSubscription;
@@ -30,7 +33,15 @@ class PlayerProvider extends ChangeNotifier {
   StreamSubscription? _durationSubscription;
   StreamSubscription? _playbackEventSubscription;
   DateTime? _lastPreloadCheck;
-  
+  DateTime? _lastPositionUpdate; // For throttling position updates
+  bool _pendingNotification = false; // For batching notifications
+
+  // Connection event handling for playback recovery
+  StreamSubscription<ConnectionEvent>? _connectionSubscription;
+  int _playbackRetryCount = 0;
+  bool _isRecovering = false;
+  static const int _maxPlaybackRetries = 3;
+
   Song? _currentSong;
   String? _currentCoverArtPath; // Local path to cached cover art
   ExtractedColors? _currentColors; // Colors extracted from current album art
@@ -45,7 +56,9 @@ class PlayerProvider extends ChangeNotifier {
   bool _hasRestoredPosition = false;
   bool _isRestoring = false;
   Set<String> _preloadedSongIds = {};
-  bool _useGaplessPlayback = false; // Disabled: not supported by media_kit backend
+  bool _useGaplessPlayback = false; // Use performance config setting
+  bool _isPlayingOffline = false;
+  bool _canPlayCurrentOffline = false;
 
   Song? get currentSong => _currentSong;
   ExtractedColors? get currentColors => _currentColors;
@@ -56,15 +69,23 @@ class PlayerProvider extends ChangeNotifier {
   Duration get position => _position;
   Duration get duration => _duration;
   double get volume => _volume;
-  String? get currentStreamUrl => _currentSong != null && _api != null 
-      ? _api!.getStreamUrl(_currentSong!.id) 
+  String? get currentStreamUrl => _currentSong != null && _api != null
+      ? _api!.getStreamUrl(_currentSong!.id)
       : null;
+  bool get isPlayingOffline => _isPlayingOffline;
+  bool get canPlayOffline => _currentSong != null && _canPlayCurrentOffline;
   
   // Navigation state getters for UI
   bool get canGoNext => _queue.isNotEmpty && _currentIndex < _queue.length - 1;
   bool get canGoPrevious => _queue.isNotEmpty && (_currentIndex > 0 || _position.inSeconds >= 3);
   
   PlayerProvider() : _audioPlayer = app_main.globalAudioPlayer {
+    // Initialize performance configuration
+    PerformanceConfig.initialize();
+
+    // Apply performance settings
+    _useGaplessPlayback = PerformanceConfig.enableGaplessPlayback;
+
     // Use the shared audio player instance from main.dart
     _initializePlayer();
     _cacheManager.initialize();
@@ -83,44 +104,87 @@ class PlayerProvider extends ChangeNotifier {
     _playbackEventSubscription = null;
     _mediaItemSubscription = null;
   }
+
+  /// Get cached audio path from database, validating file exists
+  Future<String?> _getCachedAudioPath(String songId) async {
+    try {
+      final cacheInfo = await DatabaseHelper.getSongCacheInfo(songId);
+      if (cacheInfo == null) return null;
+
+      final cachedPath = cacheInfo['cached_path'] as String?;
+      if (cachedPath == null) return null;
+
+      final file = File(cachedPath);
+      if (!await file.exists()) {
+        // File missing - clear stale cache entry
+        await DatabaseHelper.updateSongCacheStatus(songId, false, cachedPath: null);
+        return null;
+      }
+
+      final size = await file.length();
+      if (size < 1000) {
+        // File too small (partial download) - clear
+        await file.delete();
+        await DatabaseHelper.updateSongCacheStatus(songId, false, cachedPath: null);
+        return null;
+      }
+
+      return cachedPath;
+    } catch (e) {
+      if (kDebugMode) print('[PlayerProvider] Error getting cached path: $e');
+      return null;
+    }
+  }
   
   void _initializePlayer() {
     // Cancel any existing subscriptions first
     _cancelStreamSubscriptions();
     
-    // Add error handling for audio playback
+    // Add error handling for audio playback with recovery
     _playbackEventSubscription = _audioPlayer.playbackEventStream.listen(
       (event) {
-        // Playback event handled
+        // Reset retry count on successful playback
+        if (event.processingState == ProcessingState.ready) {
+          _playbackRetryCount = 0;
+        }
       },
       onError: (error, stackTrace) {
-        // Handle playback errors silently
+        if (kDebugMode) {
+          print('[PlayerProvider] Playback error: $error');
+        }
+        _handlePlaybackError(error);
       },
     );
     
     _positionSubscription = _audioPlayer.positionStream.listen((position) {
       // Don't update position while restoring or buffering
       if (_isRestoring || _isBuffering) return;
-      
+
       // Only update position if we've restored or if actively playing
       if (_hasRestoredPosition || _isPlaying) {
         _position = position;
-        
-        notifyListeners();
-        
+
         // Check if we need to preload upcoming tracks
         if (_isPlaying) {
           _checkPreloadNeeded();
         }
-        
+
         // Save position every 5 seconds while playing
         if (_isPlaying) {
           final now = DateTime.now();
-          if (_lastPositionSave == null || 
+          if (_lastPositionSave == null ||
               now.difference(_lastPositionSave!).inSeconds >= 5) {
             _savePlayerState();
             _lastPositionSave = now;
           }
+        }
+
+        // Throttle position updates to reduce CPU usage
+        final now = DateTime.now();
+        if (_lastPositionUpdate == null ||
+            now.difference(_lastPositionUpdate!) >= Duration(milliseconds: PerformanceConfig.positionUpdateInterval)) {
+          _lastPositionUpdate = now;
+          _notifyListenersDebounced();
         }
       }
     });
@@ -128,31 +192,56 @@ class PlayerProvider extends ChangeNotifier {
     _durationSubscription = _audioPlayer.durationStream.listen((duration) {
       if (duration != null) {
         _duration = duration;
-        notifyListeners();
+        _notifyListenersDebounced();
       }
     });
     
     _playerStateSubscription = _audioPlayer.playerStateStream.listen((state) {
       // Track playing state separately from buffering
+      final wasPlaying = _isPlaying;
       _isPlaying = state.playing;
-      
+
+      // Report playing state to ActivityCoordinator for battery optimization
+      if (wasPlaying != _isPlaying) {
+        _activityCoordinator?.setPlayingState(_isPlaying);
+      }
+
       // Consider both buffering and loading states as "buffering" for UI purposes
       // Also check if we're "playing" but not ready (which means buffering)
-      _isBuffering = state.processingState == ProcessingState.buffering || 
+      _isBuffering = state.processingState == ProcessingState.buffering ||
                      state.processingState == ProcessingState.loading ||
                      (state.playing && state.processingState != ProcessingState.ready);
-      
+
       // Debug logging to see what states we're getting
       if (kDebugMode) {
         print('[PlayerProvider] PlayerState: playing=${state.playing}, processingState=${state.processingState}, isBuffering=$_isBuffering');
       }
-      
+
       if (state.processingState == ProcessingState.completed) {
         next();
       }
-      
-      notifyListeners();
+
+      _notifyListenersDebounced();
     });
+  }
+
+  void _notifyListenersDebounced() {
+    // Cancel any existing timer
+    _notificationTimer?.cancel();
+
+    // Set a new timer to debounce notifications
+    _notificationTimer = Timer(const Duration(milliseconds: 16), () {
+      _pendingNotification = false;
+      notifyListeners();
+      _notificationTimer = null;
+    });
+
+    _pendingNotification = true;
+  }
+
+  /// Set the ActivityCoordinator for reporting playing state
+  void setActivityCoordinator(ActivityCoordinator coordinator) {
+    _activityCoordinator = coordinator;
   }
 
   void setApi(NavidromeApi api, {NetworkProvider? networkProvider}) {
@@ -161,17 +250,17 @@ class PlayerProvider extends ChangeNotifier {
       if (kDebugMode) print('[PlayerProvider] API already set to same instance, skipping');
       return;
     }
-    
+
     _api = api;
     _cacheService = CacheService(api: api);
-    
-    // Initialize audio file cache if network provider is available
+
+    // Store network provider for connectivity checks
     if (networkProvider != null) {
       _networkProvider = networkProvider;
-      _audioFileCacheService = AudioFileCacheService(
-        api: api,
-        networkProvider: networkProvider,
-      );
+
+      // Subscribe to connection events for playback recovery
+      _connectionSubscription?.cancel();
+      _connectionSubscription = networkProvider.connectionEvents.listen(_handleConnectionEvent);
     }
     
     // Update the audio handler with the proper API if on Android or Linux
@@ -250,41 +339,55 @@ class PlayerProvider extends ChangeNotifier {
             _queue,  // Use the full queue, not just current song
             startIndex: _currentIndex,
             coverArtPaths: [_currentCoverArtPath],
+            networkProvider: _networkProvider,
           );
           // The audio handler will handle playback through the shared player
         } else {
-          // Check for cached audio file first
+          // Check for cached audio file first - works on all platforms when offline
           String? audioSource;
-          if (_audioFileCacheService != null && Platform.isLinux) {
-            // Only use cache on Linux for now
-            final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
-            if (cachedPath != null) {
-              final cachedFile = File(cachedPath);
-              if (await cachedFile.exists() && await cachedFile.length() > 1000) {
-                audioSource = cachedPath;
-                if (kDebugMode) print('[PlayerProvider] Restoring from cache: ${_currentSong!.title}');
-              }
+          final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+          if (cachedPath != null) {
+            final cachedFile = File(cachedPath);
+            final fileExists = await cachedFile.exists();
+            final fileSize = fileExists ? await cachedFile.length() : 0;
+            if (fileExists && fileSize > 1000) {
+              audioSource = cachedPath;
+              _isPlayingOffline = true;
+              _canPlayCurrentOffline = true;
+            } else {
+              _canPlayCurrentOffline = false;
             }
+          } else {
+            _canPlayCurrentOffline = false;
+            if (kDebugMode) print('[PlayerProvider] No cached file found for: ${_currentSong!.title}');
           }
-          
-          // Fall back to streaming if not cached
-          if (audioSource == null) {
-            final shouldTranscode = _networkProvider != null && 
-                                   !_networkProvider!.isOnWifi && 
+
+          // Fall back to streaming if not cached or if online
+          if (audioSource == null && !_networkProvider!.isOffline) {
+            final shouldTranscode = _networkProvider != null &&
+                                   !_networkProvider!.isOnWifi &&
                                    !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
             audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
-            
-            // Trigger background caching
-            _audioFileCacheService?.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
+            _isPlayingOffline = false;
+          } else if (audioSource == null && _networkProvider!.isOffline) {
+            // Offline and no cached file - can't play
+            _isPlayingOffline = false;
+            _canPlayCurrentOffline = false;
+            if (kDebugMode) print('[PlayerProvider] ✗ Offline and no cached file for ${_currentSong!.title} - CANNOT PLAY');
+            return;
           }
           
           // Set the audio source (either local file or stream URL)
-          if (audioSource.startsWith('/')) {
-            // Local file path
-            await _audioPlayer.setFilePath(audioSource);
-          } else {
-            // Stream URL
-            await _audioPlayer.setUrl(audioSource);
+          if (audioSource != null) {
+            if (audioSource.startsWith('/')) {
+              // Local file path
+              if (kDebugMode) print('[PlayerProvider] → Setting local file path: $audioSource');
+              await _audioPlayer.setFilePath(audioSource);
+            } else {
+              // Stream URL
+              if (kDebugMode) print('[PlayerProvider] → Setting stream URL: $audioSource');
+              await _audioPlayer.setUrl(audioSource);
+            }
           }
         }
         
@@ -381,13 +484,12 @@ class PlayerProvider extends ChangeNotifier {
     }
     
     // Update audio handler for Android/Linux media session with current cached art
-    if (kDebugMode) print('[PlayerProvider] Checking handlers - audioHandler: ${app_main.audioHandler != null}, actualAudioHandler: ${app_main.actualAudioHandler != null}');
     if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null) {
-      if (kDebugMode) print('[PlayerProvider] Updating audio handler queue with ${songs.length} songs');
       await app_main.actualAudioHandler!.updateQueueFromSongs(
-        songs, 
+        songs,
         startIndex: startIndex,
         coverArtPaths: [_currentCoverArtPath], // Start with just current song's art
+        networkProvider: _networkProvider,
       );
       // The audio handler will set up the playlist in the shared player
     } else {
@@ -395,44 +497,51 @@ class PlayerProvider extends ChangeNotifier {
         // Use gapless playback for queues with multiple songs
         await _setupGaplessPlayback(startIndex);
       } else {
-        // Check for cached audio file first
+        // Check for cached audio file first - works on all platforms
         String? audioSource;
-        if (_audioFileCacheService != null && Platform.isLinux) {
-          // Only use cache on Linux for now
-          final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
-          if (cachedPath != null) {
-            final cachedFile = File(cachedPath);
-            if (await cachedFile.exists() && await cachedFile.length() > 1000) {
-              audioSource = cachedPath;
-              if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
-            }
+        final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+        if (cachedPath != null) {
+          final cachedFile = File(cachedPath);
+          final fileExists = await cachedFile.exists();
+          final fileSize = fileExists ? await cachedFile.length() : 0;
+          if (fileExists && fileSize > 1000) {
+            audioSource = cachedPath;
+            _isPlayingOffline = true;
+            _canPlayCurrentOffline = true;
+          } else {
+            _canPlayCurrentOffline = false;
           }
+        } else {
+          _canPlayCurrentOffline = false;
         }
-        
-        // Fall back to streaming if not cached
-        if (audioSource == null) {
-          final shouldTranscode = _networkProvider != null && 
-                                 !_networkProvider!.isOnWifi && 
+
+        // Fall back to streaming if not cached or if online
+        if (audioSource == null && !_networkProvider!.isOffline) {
+          final shouldTranscode = _networkProvider != null &&
+                                 !_networkProvider!.isOnWifi &&
                                  !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
           audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
-          
-          // Trigger background caching for current and next tracks
-          if (_audioFileCacheService != null) {
-            _audioFileCacheService!.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
-            _audioFileCacheService!.preCacheNextTracks(songs, startIndex);
-          }
+          _isPlayingOffline = false;
+        } else if (audioSource == null && _networkProvider!.isOffline) {
+          // Offline and no cached file - can't play
+          _isPlayingOffline = false;
+          _canPlayCurrentOffline = false;
+          if (kDebugMode) print('[PlayerProvider] Offline and no cached file for ${_currentSong!.title}');
+          return;
         }
         
         // Stop any current playback first
         await _audioPlayer.stop();
-        
+
         // Set the audio source (either local file or stream URL)
-        if (audioSource.startsWith('/')) {
-          // Local file path
-          await _audioPlayer.setFilePath(audioSource);
-        } else {
-          // Stream URL
-          await _audioPlayer.setUrl(audioSource);
+        if (audioSource != null) {
+          if (audioSource.startsWith('/')) {
+            // Local file path
+            await _audioPlayer.setFilePath(audioSource);
+          } else {
+            // Stream URL
+            await _audioPlayer.setUrl(audioSource);
+          }
         }
       }
     }
@@ -459,6 +568,12 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> play() async {
+    // Check if we can play offline
+    if (_networkProvider?.isOffline == true && !_canPlayCurrentOffline) {
+      if (kDebugMode) print('[PlayerProvider] Cannot play offline - no cached file');
+      return;
+    }
+
     await _audioPlayer.play();
   }
 
@@ -471,6 +586,12 @@ class PlayerProvider extends ChangeNotifier {
     if (_isPlaying) {
       await pause();
     } else {
+      // Check if we can play offline
+      if (_networkProvider?.isOffline == true && !_canPlayCurrentOffline) {
+        if (kDebugMode) print('[PlayerProvider] Cannot play offline - no cached file');
+        return;
+      }
+
       await play();
     }
   }
@@ -508,61 +629,62 @@ class PlayerProvider extends ChangeNotifier {
       // Try to use preloaded player for minimal gap
       final cachedPlayer = _cacheManager.getCachedPlayer(_currentSong!.id);
       if (cachedPlayer != null) {
-        if (kDebugMode) print('[PlayerProvider] Using preloaded audio for ${_currentSong!.title}');
         _cacheManager.removeCachedPlayer(_currentSong!.id);
         _preloadedSongIds.remove(_currentSong!.id);
       }
       
-      // Check for cached audio file first
+      // Check for cached audio file first - works on all platforms
       String? audioSource;
-      if (_audioFileCacheService != null && Platform.isLinux) {
-        // Only use cache on Linux for now, macOS has issues with cached files
-        final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
-        if (cachedPath != null) {
-          // Validate the cached file exists and is readable
-          final cachedFile = File(cachedPath);
-          if (await cachedFile.exists() && await cachedFile.length() > 1000) {
-            audioSource = cachedPath;
-            if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
-          } else {
-            // Cached file invalid or too small, falling back to streaming
-          }
+      final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+      if (cachedPath != null) {
+        // Validate the cached file exists and is readable
+        final cachedFile = File(cachedPath);
+        if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+          audioSource = cachedPath;
+          _isPlayingOffline = true;
+          _canPlayCurrentOffline = true;
+        } else {
+          _canPlayCurrentOffline = false;
         }
+      } else {
+        _canPlayCurrentOffline = false;
       }
-      
-      // Fall back to streaming if not cached
-      if (audioSource == null) {
-        final shouldTranscode = _networkProvider != null && 
-                               !_networkProvider!.isOnWifi && 
+
+      // Fall back to streaming if not cached or if online
+      if (audioSource == null && !_networkProvider!.isOffline) {
+        final shouldTranscode = _networkProvider != null &&
+                               !_networkProvider!.isOnWifi &&
                                !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
         audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
-        
-        // Trigger background caching
-        if (_audioFileCacheService != null) {
-          _audioFileCacheService!.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
-          _audioFileCacheService!.preCacheNextTracks(_queue, _currentIndex);
-        }
+        _isPlayingOffline = false;
+      } else if (audioSource == null && _networkProvider!.isOffline) {
+        // Offline and no cached file - can't play
+        _isPlayingOffline = false;
+        _canPlayCurrentOffline = false;
+        if (kDebugMode) print('[PlayerProvider] Offline and no cached file for ${_currentSong!.title}');
+        return;
       }
-      
-      // Debug logging
+
       // Stop current playback before loading new track
       await _audioPlayer.stop();
       
       // Try to load the audio source, fall back to streaming if it fails
       try {
         // Set the audio source (either local file or stream URL)
-        if (audioSource.startsWith('/')) {
-          // Local file path
-          await _audioPlayer.setFilePath(audioSource);
-        } else {
-          // Stream URL
-          await _audioPlayer.setUrl(audioSource);
+        if (audioSource != null) {
+          if (audioSource.startsWith('/')) {
+            // Local file path
+            await _audioPlayer.setFilePath(audioSource);
+          } else {
+            // Stream URL
+            await _audioPlayer.setUrl(audioSource);
+          }
         }
       } catch (e) {
         // If it was a cached file that failed, try streaming instead
-        if (audioSource.startsWith('/')) {
-          final shouldTranscode = _networkProvider != null && 
-                                 !_networkProvider!.isOnWifi && 
+        if (audioSource?.startsWith('/') == true) {
+          final shouldTranscode = _networkProvider != null &&
+                                 !_networkProvider!.isOnWifi &&
                                  !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
           audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
           await _audioPlayer.setUrl(audioSource);
@@ -609,38 +731,46 @@ class PlayerProvider extends ChangeNotifier {
       // Extract colors from album art
       await _extractColorsFromCurrentSong();
       
-      // Check for cached audio file first
+      // Check for cached audio file first - works on all platforms
       String? audioSource;
-      if (_audioFileCacheService != null && Platform.isLinux) {
-        // Only use cache on Linux for now
-        final cachedPath = await _audioFileCacheService!.getCachedAudioPath(_currentSong!.id);
-        if (cachedPath != null) {
-          final cachedFile = File(cachedPath);
-          if (await cachedFile.exists() && await cachedFile.length() > 1000) {
-            audioSource = cachedPath;
-            if (kDebugMode) print('[PlayerProvider] Playing from cache: ${_currentSong!.title}');
-          }
+      final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+      if (cachedPath != null) {
+        final cachedFile = File(cachedPath);
+        if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+          audioSource = cachedPath;
+          _isPlayingOffline = true;
+          _canPlayCurrentOffline = true;
+        } else {
+          _canPlayCurrentOffline = false;
         }
+      } else {
+        _canPlayCurrentOffline = false;
       }
-      
-      // Fall back to streaming if not cached
-      if (audioSource == null) {
-        final shouldTranscode = _networkProvider != null && 
-                               !_networkProvider!.isOnWifi && 
+
+      // Fall back to streaming if not cached or if online
+      if (audioSource == null && !_networkProvider!.isOffline) {
+        final shouldTranscode = _networkProvider != null &&
+                               !_networkProvider!.isOnWifi &&
                                !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
         audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
-        
-        // Trigger background caching
-        _audioFileCacheService?.cacheAudioFile(_currentSong!.id, albumId: _currentSong!.albumId);
+        _isPlayingOffline = false;
+      } else if (audioSource == null && _networkProvider!.isOffline) {
+        // Offline and no cached file - can't play
+        _isPlayingOffline = false;
+        _canPlayCurrentOffline = false;
+        if (kDebugMode) print('[PlayerProvider] Offline and no cached file for ${_currentSong!.title}');
+        return;
       }
-      
+
       // Set the audio source (either local file or stream URL)
-      if (audioSource.startsWith('/')) {
-        // Local file path
-        await _audioPlayer.setFilePath(audioSource);
-      } else {
-        // Stream URL
-        await _audioPlayer.setUrl(audioSource);
+      if (audioSource != null) {
+        if (audioSource.startsWith('/')) {
+          // Local file path
+          await _audioPlayer.setFilePath(audioSource);
+        } else {
+          // Stream URL
+          await _audioPlayer.setUrl(audioSource);
+        }
       }
       await _audioPlayer.play();
       
@@ -729,10 +859,10 @@ class PlayerProvider extends ChangeNotifier {
   
   Future<void> _savePlayerState() async {
     if (_currentSong == null || _queue.isEmpty) return;
-    
+
     try {
       final prefs = await SharedPreferences.getInstance();
-      
+
       final currentSongMap = {
         'id': _currentSong!.id,
         'title': _currentSong!.title,
@@ -746,7 +876,7 @@ class PlayerProvider extends ChangeNotifier {
         'discSubtitle': _currentSong!.discSubtitle,
         'coverArt': _currentSong!.coverArt,
       };
-      
+
       final queueList = _queue.map((song) => {
         'id': song.id,
         'title': song.title,
@@ -760,16 +890,45 @@ class PlayerProvider extends ChangeNotifier {
         'discSubtitle': song.discSubtitle,
         'coverArt': song.coverArt,
       }).toList();
-      
+
       await prefs.setString('player_current_song', json.encode(currentSongMap));
       await prefs.setString('player_queue', json.encode(queueList));
       await prefs.setInt('player_current_index', _currentIndex);
       await prefs.setInt('player_position', _position.inMilliseconds);
       await prefs.setDouble('player_volume', _volume);
-      
-      // Removed frequent position logging - too verbose for release builds
+
+      // Save play history for intelligent pre-caching
+      await _updatePlayHistory();
     } catch (e) {
       print('Error saving player state: $e');
+    }
+  }
+
+  /// Update play history for intelligent pre-caching
+  Future<void> _updatePlayHistory() async {
+    if (_currentSong == null) return;
+
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final historyJson = prefs.getStringList('play_history') ?? [];
+
+      // Add current song to history
+      historyJson.add(json.encode({
+        'id': _currentSong!.id,
+        'title': _currentSong!.title,
+        'albumId': _currentSong!.albumId,
+        'artistId': _currentSong!.artistId,
+        'timestamp': DateTime.now().millisecondsSinceEpoch,
+      }));
+
+      // Keep only last 50 played songs
+      if (historyJson.length > 50) {
+        historyJson.removeRange(0, historyJson.length - 50);
+      }
+
+      await prefs.setStringList('play_history', historyJson);
+    } catch (e) {
+      print('Error updating play history: $e');
     }
   }
   
@@ -780,21 +939,57 @@ class PlayerProvider extends ChangeNotifier {
     await prefs.remove('player_current_index');
     await prefs.remove('player_position');
     await prefs.remove('player_volume');
+    await prefs.remove('play_history');
   }
 
   Future<void> _setupGaplessPlayback(int startIndex) async {
     if (_api == null) return;
-    
+
     // Create audio sources for the queue
     final audioSources = <AudioSource>[];
-    
+
     // Add up to 3 tracks initially (current + next 2)
     final endIndex = (startIndex + 3).clamp(0, _queue.length);
-    
+
     for (int i = startIndex; i < endIndex; i++) {
       final song = _queue[i];
-      final url = _api!.getStreamUrl(song.id);
-      audioSources.add(AudioSource.uri(Uri.parse(url)));
+
+      // Check for cached audio file first
+      String? audioSource;
+      final cachedPath = await _getCachedAudioPath(song.id);
+      if (cachedPath != null) {
+        final cachedFile = File(cachedPath);
+        if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+          audioSource = cachedPath;
+          if (i == startIndex) {
+            // Only set offline flag for the current song
+            _isPlayingOffline = true;
+            _canPlayCurrentOffline = true;
+          }
+        }
+      }
+
+      // Fall back to streaming if not cached
+      if (audioSource == null) {
+        final shouldTranscode = _networkProvider != null &&
+                               !_networkProvider!.isOnWifi &&
+                               !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+        audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode);
+        if (i == startIndex) {
+          _isPlayingOffline = false;
+          // Check if we can play this song offline
+          _canPlayCurrentOffline = await _checkCanPlayOffline(song);
+        }
+      }
+
+      // Create the appropriate audio source
+      if (audioSource.startsWith('/')) {
+        // Local file path
+        audioSources.add(AudioSource.uri(Uri.file(audioSource)));
+      } else {
+        // Stream URL
+        audioSources.add(AudioSource.uri(Uri.parse(audioSource)));
+      }
     }
     
     // Create concatenating audio source for gapless playback
@@ -806,8 +1001,23 @@ class PlayerProvider extends ChangeNotifier {
     // Schedule adding more tracks as we play
     _scheduleTrackAddition(endIndex);
   }
+
+  Future<bool> _checkCanPlayOffline(Song song) async {
+    // Check songs table for cached path and status
+    final cachedPath = await _getCachedAudioPath(song.id);
+    if (cachedPath != null) {
+      final cachedFile = File(cachedPath);
+      if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+        return true;
+      } else {
+      }
+    }
+
+    if (kDebugMode) print('[PlayerProvider] ✗ No cached file found for: ${song.title}');
+    return false;
+  }
   
-  void _scheduleTrackAddition(int nextIndex) {
+  Future<void> _scheduleTrackAddition(int nextIndex) async {
     if (_api == null || _playlist == null) return;
     
     // Add more tracks to the playlist as we approach the end
@@ -829,14 +1039,47 @@ class PlayerProvider extends ChangeNotifier {
         // Add more tracks when we're 2 tracks from the end
         final tracksInPlaylist = _playlist!.length;
         if (index >= tracksInPlaylist - 2 && nextIndex < _queue.length) {
-          // Add the next track
-          final song = _queue[nextIndex];
-          final url = _api!.getStreamUrl(song.id);
-          _playlist!.add(AudioSource.uri(Uri.parse(url)));
-          _scheduleTrackAddition(nextIndex + 1);
+          // Add the next track asynchronously
+          _addNextTrackToPlaylist(nextIndex);
         }
       }
     });
+  }
+
+  Future<void> _addNextTrackToPlaylist(int trackIndex) async {
+    if (_api == null || _playlist == null || trackIndex >= _queue.length) return;
+
+    final song = _queue[trackIndex];
+
+    // Check for cached audio file first
+    String? audioSource;
+    final cachedPath = await _getCachedAudioPath(song.id);
+    if (cachedPath != null) {
+      final cachedFile = File(cachedPath);
+      if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+        audioSource = cachedPath;
+      }
+    }
+
+    // Fall back to streaming if not cached
+    if (audioSource == null) {
+      final shouldTranscode = _networkProvider != null &&
+                             !_networkProvider!.isOnWifi &&
+                             !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+      audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode);
+    }
+
+    // Create the appropriate audio source
+    if (audioSource.startsWith('/')) {
+      // Local file path
+      _playlist!.add(AudioSource.uri(Uri.file(audioSource)));
+    } else {
+      // Stream URL
+      _playlist!.add(AudioSource.uri(Uri.parse(audioSource)));
+    }
+
+    // Schedule the next track
+    _scheduleTrackAddition(trackIndex + 1);
   }
   
   void _checkPreloadNeeded() {
@@ -946,10 +1189,130 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
     }
   }
-  
+
+  /// Handle connection events from NetworkProvider
+  void _handleConnectionEvent(ConnectionEvent event) {
+    if (event == ConnectionEvent.reconnected ||
+        event == ConnectionEvent.serverRestored) {
+      _onNetworkReconnected();
+    }
+  }
+
+  /// Called when network reconnects - attempt to recover playback if needed
+  Future<void> _onNetworkReconnected() async {
+    if (kDebugMode) {
+      print('[PlayerProvider] Network reconnected, checking if recovery needed');
+    }
+
+    // If we're buffering and have a current song, try to recover
+    if (_isBuffering && _currentSong != null && !_isRecovering) {
+      if (kDebugMode) {
+        print('[PlayerProvider] Was buffering, attempting recovery');
+      }
+      await _recoverPlayback();
+    }
+  }
+
+  /// Handle playback errors with automatic retry
+  Future<void> _handlePlaybackError(dynamic error) async {
+    if (_isRecovering || _currentSong == null) return;
+
+    _playbackRetryCount++;
+
+    if (_playbackRetryCount > _maxPlaybackRetries) {
+      if (kDebugMode) {
+        print('[PlayerProvider] Max retries exceeded, giving up');
+      }
+      _playbackRetryCount = 0;
+      return;
+    }
+
+    _isRecovering = true;
+
+    try {
+      // Exponential backoff
+      final delay = Duration(milliseconds: 500 * _playbackRetryCount);
+      if (kDebugMode) {
+        print(
+            '[PlayerProvider] Retry attempt $_playbackRetryCount in ${delay.inMilliseconds}ms');
+      }
+
+      await Future.delayed(delay);
+      await _recoverPlayback();
+    } finally {
+      _isRecovering = false;
+    }
+  }
+
+  /// Attempt to recover playback after network interruption
+  Future<void> _recoverPlayback() async {
+    if (_currentSong == null || _api == null) return;
+
+    final savedPosition = _position;
+    final wasPlaying = _isPlaying;
+
+    if (kDebugMode) {
+      print(
+          '[PlayerProvider] Recovering playback for ${_currentSong!.title} at $savedPosition');
+    }
+
+    // Try cached file first
+    final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+    if (cachedPath != null) {
+      final cachedFile = File(cachedPath);
+      if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+        try {
+          await _audioPlayer.setFilePath(cachedPath);
+          await _audioPlayer.seek(savedPosition);
+          if (wasPlaying) await _audioPlayer.play();
+          _isPlayingOffline = true;
+          _canPlayCurrentOffline = true;
+          if (kDebugMode) {
+            print('[PlayerProvider] Recovery: Using cached file');
+          }
+          notifyListeners();
+          return;
+        } catch (e) {
+          if (kDebugMode) {
+            print('[PlayerProvider] Cache recovery failed: $e');
+          }
+        }
+      }
+    }
+
+    // Try streaming if online
+    if (!(_networkProvider?.isOffline ?? true)) {
+      try {
+        final shouldTranscode = _networkProvider != null &&
+            !_networkProvider!.isOnWifi &&
+            !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+        final streamUrl =
+            _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+        await _audioPlayer.setUrl(streamUrl);
+        await _audioPlayer.seek(savedPosition);
+        if (wasPlaying) await _audioPlayer.play();
+        _isPlayingOffline = false;
+        if (kDebugMode) {
+          print('[PlayerProvider] Recovery: Using stream');
+        }
+        notifyListeners();
+        return;
+      } catch (e) {
+        if (kDebugMode) {
+          print('[PlayerProvider] Stream recovery failed: $e');
+        }
+      }
+    }
+
+    if (kDebugMode) {
+      print('[PlayerProvider] Recovery failed, no options left');
+    }
+  }
+
   @override
   void dispose() {
     _preloadTimer?.cancel();
+    _connectionSubscription?.cancel();
     _cancelStreamSubscriptions();
     _savePlayerState();
     _audioPlayer.dispose();

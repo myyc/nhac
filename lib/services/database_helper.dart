@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:path/path.dart';
@@ -11,7 +12,7 @@ import '../models/song.dart';
 class DatabaseHelper {
   static Database? _database;
   static const String _databaseName = 'nhac_cache.db';
-  static const int _databaseVersion = 4;
+  static const int _databaseVersion = 8;
   static bool _isInitializing = false;
   static final _initCompleter = <String, Completer<Database>>{};
 
@@ -238,13 +239,13 @@ class DatabaseHelper {
         // Enable foreign keys
         await db.rawQuery('PRAGMA foreign_keys = ON');
         
-        // Enable WAL mode for better concurrency
-        // Note: This must be done in onOpen, not onConfigure
+        // WAL mode disabled due to persistence issues
+        // Using DELETE mode for better reliability across restarts
         try {
-          final result = await db.rawQuery('PRAGMA journal_mode = WAL');
-          print('Journal mode set to: $result');
+          await db.rawQuery('PRAGMA journal_mode = DELETE');
+          print('Journal mode set to: DELETE');
         } catch (e) {
-          print('Warning: Could not set WAL mode: $e');
+          print('Warning: Could not set journal mode: $e');
         }
         
         // Set busy timeout to 10 seconds
@@ -292,6 +293,280 @@ class DatabaseHelper {
       await db.execute('ALTER TABLE songs ADD COLUMN suffix TEXT');
       await db.execute('ALTER TABLE songs ADD COLUMN bitRate INTEGER');
     }
+
+    if (oldVersion < 5) {
+      print('[DatabaseHelper] Upgrading database to version 5 - adding offline cache tracking');
+      // Add offline availability tracking for songs only
+      try {
+        await db.execute('ALTER TABLE songs ADD COLUMN is_cached INTEGER DEFAULT 0');
+        print('[DatabaseHelper] Added songs.is_cached column');
+      } catch (e) {
+        print('[DatabaseHelper] Column songs.is_cached already exists: $e');
+      }
+
+      try {
+        await db.execute('ALTER TABLE songs ADD COLUMN cached_path TEXT');
+        print('[DatabaseHelper] Added songs.cached_path column');
+      } catch (e) {
+        print('[DatabaseHelper] Column songs.cached_path already exists: $e');
+      }
+
+      // Add indexes for offline queries
+      try {
+        await db.execute('CREATE INDEX idx_songs_cached ON songs(is_cached)');
+        print('[DatabaseHelper] Created idx_songs_cached index');
+      } catch (e) {
+        print('[DatabaseHelper] Index idx_songs_cached already exists: $e');
+      }
+
+      // Create download queue table for tracking download progress
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS download_queue (
+            id TEXT PRIMARY KEY,
+            song_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            progress INTEGER DEFAULT 0,
+            total_size INTEGER,
+            downloaded_size INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            error TEXT,
+            FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+          )
+        ''');
+        print('[DatabaseHelper] Created download_queue table');
+      } catch (e) {
+        print('[DatabaseHelper] Error creating download_queue table: $e');
+      }
+
+      try {
+        await db.execute('CREATE INDEX idx_download_queue_status ON download_queue(status)');
+        print('[DatabaseHelper] Created idx_download_queue_status index');
+      } catch (e) {
+        print('[DatabaseHelper] Index idx_download_queue_status already exists: $e');
+      }
+
+      try {
+        await db.execute('CREATE INDEX idx_download_queue_song ON download_queue(song_id)');
+        print('[DatabaseHelper] Created idx_download_queue_song index');
+      } catch (e) {
+        print('[DatabaseHelper] Index idx_download_queue_song already exists: $e');
+      }
+
+      print('[DatabaseHelper] Database upgrade to version 5 completed');
+    }
+
+    if (oldVersion < 6) {
+      // Create FTS virtual tables for offline search
+      await db.execute('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS songs_fts
+        USING fts5(
+          id,
+          title,
+          album,
+          artist,
+          albumId,
+          artistId,
+          content='songs',
+          content_rowid='rowid'
+        )
+      ''');
+
+      await db.execute('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS albums_fts
+        USING fts5(
+          id,
+          name,
+          artist,
+          artistId,
+          content='albums',
+          content_rowid='rowid'
+        )
+      ''');
+
+      await db.execute('''
+        CREATE VIRTUAL TABLE IF NOT EXISTS artists_fts
+        USING fts5(
+          id,
+          name,
+          content='artists',
+          content_rowid='rowid'
+        )
+      ''');
+
+      // Create triggers to keep FTS tables in sync
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS songs_fts_insert
+        AFTER INSERT ON songs BEGIN
+          INSERT INTO songs_fts(id, title, album, artist, albumId, artistId)
+          VALUES (new.id, new.title, new.album, new.artist, new.albumId, new.artistId);
+        END
+      ''');
+
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS songs_fts_delete
+        AFTER DELETE ON songs BEGIN
+          DELETE FROM songs_fts WHERE id = old.id;
+        END
+      ''');
+
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS songs_fts_update
+        AFTER UPDATE ON songs BEGIN
+          DELETE FROM songs_fts WHERE id = old.id;
+          INSERT INTO songs_fts(id, title, album, artist, albumId, artistId)
+          VALUES (new.id, new.title, new.album, new.artist, new.albumId, new.artistId);
+        END
+      ''');
+
+      // Similar triggers for albums
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS albums_fts_insert
+        AFTER INSERT ON albums BEGIN
+          INSERT INTO albums_fts(id, name, artist, artistId)
+          VALUES (new.id, new.name, new.artist, new.artistId);
+        END
+      ''');
+
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS albums_fts_delete
+        AFTER DELETE ON albums BEGIN
+          DELETE FROM albums_fts WHERE id = old.id;
+        END
+      ''');
+
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS albums_fts_update
+        AFTER UPDATE ON albums BEGIN
+          DELETE FROM albums_fts WHERE id = old.id;
+          INSERT INTO albums_fts(id, name, artist, artistId)
+          VALUES (new.id, new.name, new.artist, new.artistId);
+        END
+      ''');
+
+      // And for artists
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS artists_fts_insert
+        AFTER INSERT ON artists BEGIN
+          INSERT INTO artists_fts(id, name)
+          VALUES (new.id, new.name);
+        END
+      ''');
+
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS artists_fts_delete
+        AFTER DELETE ON artists BEGIN
+          DELETE FROM artists_fts WHERE id = old.id;
+        END
+      ''');
+
+      await db.execute('''
+        CREATE TRIGGER IF NOT EXISTS artists_fts_update
+        AFTER UPDATE ON artists BEGIN
+          DELETE FROM artists_fts WHERE id = old.id;
+          INSERT INTO artists_fts(id, name)
+          VALUES (new.id, new.name);
+        END
+      ''');
+
+      // Populate FTS tables with existing data
+      await db.execute('INSERT INTO songs_fts(id, title, album, artist, albumId, artistId) SELECT id, title, album, artist, albumId, artistId FROM songs');
+      await db.execute('INSERT INTO albums_fts(id, name, artist, artistId) SELECT id, name, artist, artistId FROM albums');
+      await db.execute('INSERT INTO artists_fts(id, name) SELECT id, name FROM artists');
+    }
+
+    if (oldVersion < 7) {
+      print('[DatabaseHelper] Upgrading database to version 7 - creating download_queue table');
+
+      // Create download queue table for tracking download progress
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS download_queue (
+            id TEXT PRIMARY KEY,
+            song_id TEXT NOT NULL,
+            status TEXT NOT NULL,
+            progress INTEGER DEFAULT 0,
+            total_size INTEGER,
+            downloaded_size INTEGER,
+            created_at INTEGER NOT NULL,
+            updated_at INTEGER NOT NULL,
+            error TEXT,
+            FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+          )
+        ''');
+        print('[DatabaseHelper] Created download_queue table');
+      } catch (e) {
+        print('[DatabaseHelper] Error creating download_queue table: $e');
+      }
+
+      // Create indexes
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_download_queue_status ON download_queue(status)');
+        print('[DatabaseHelper] Created idx_download_queue_status index');
+      } catch (e) {
+        print('[DatabaseHelper] Index idx_download_queue_status already exists: $e');
+      }
+
+      try {
+        await db.execute('CREATE INDEX IF NOT EXISTS idx_download_queue_song ON download_queue(song_id)');
+        print('[DatabaseHelper] Created idx_download_queue_song index');
+      } catch (e) {
+        print('[DatabaseHelper] Index idx_download_queue_song already exists: $e');
+      }
+    }
+
+    if (oldVersion < 8) {
+      print('[DatabaseHelper] Upgrading database to version 8 - cleaning up stale audio cache entries');
+
+      // Clean up audio_cache entries that don't have corresponding files
+      try {
+        final appDir = await getApplicationSupportDirectory();
+        final downloadsDir = Directory(join(appDir.path, 'downloads'));
+
+        // Get all audio cache entries
+        final cacheEntries = await db.query('audio_cache');
+        int cleanedCount = 0;
+
+        for (final entry in cacheEntries) {
+          final songId = entry['song_id'] as String;
+          final format = entry['format'] as String;
+          final oldPath = entry['file_path'] as String;
+
+          // Check if file exists at old location
+          final oldFile = File(oldPath);
+          if (!await oldFile.exists()) {
+            // Try to find file in new downloads directory
+            final extension = format == 'mp3' ? 'mp3' : 'audio';
+            final newPath = join(downloadsDir.path, '$songId.$extension');
+            final newFile = File(newPath);
+
+            if (await newFile.exists()) {
+              // Update path in database
+              await db.update(
+                'audio_cache',
+                {'file_path': newPath},
+                where: 'song_id = ? AND format = ?',
+                whereArgs: [songId, format],
+              );
+              print('[DatabaseHelper] Updated cache path for $songId');
+            } else {
+              // Remove entry if file doesn't exist anywhere
+              await db.delete(
+                'audio_cache',
+                where: 'song_id = ? AND format = ?',
+                whereArgs: [songId, format],
+              );
+              cleanedCount++;
+            }
+          }
+        }
+
+        print('[DatabaseHelper] Cleaned up $cleanedCount stale audio cache entries');
+      } catch (e) {
+        print('[DatabaseHelper] Error cleaning audio cache: $e');
+      }
+    }
   }
 
   static Future<void> _onCreate(Database db, int version) async {
@@ -333,6 +608,8 @@ class DatabaseHelper {
         coverArt TEXT,
         suffix TEXT,
         bitRate INTEGER,
+        is_cached INTEGER DEFAULT 0,
+        cached_path TEXT,
         lastSync INTEGER NOT NULL
       )
     ''');
@@ -373,6 +650,47 @@ class DatabaseHelper {
     // Add indexes for performance
     await db.execute('CREATE INDEX idx_audio_cache_song_id ON audio_cache(song_id)');
     await db.execute('CREATE INDEX idx_audio_cache_last_played ON audio_cache(last_played)');
+    await db.execute('CREATE INDEX idx_songs_cached ON songs(is_cached)');
+
+    // Create download queue table for tracking download progress
+    await db.execute('''
+      CREATE TABLE download_queue (
+        id TEXT PRIMARY KEY,
+        song_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        progress INTEGER DEFAULT 0,
+        total_size INTEGER,
+        downloaded_size INTEGER,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        error TEXT,
+        FOREIGN KEY (song_id) REFERENCES songs(id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Create download queue indexes
+    await db.execute('CREATE INDEX idx_download_queue_status ON download_queue(status)');
+    await db.execute('CREATE INDEX idx_download_queue_song ON download_queue(song_id)');
+
+    // Create album download table for tracking album-level downloads
+    await db.execute('''
+      CREATE TABLE album_downloads (
+        id TEXT PRIMARY KEY,
+        album_id TEXT NOT NULL,
+        status TEXT NOT NULL,
+        progress INTEGER DEFAULT 0,
+        total_songs INTEGER,
+        downloaded_songs INTEGER DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        error TEXT,
+        FOREIGN KEY (album_id) REFERENCES albums(id) ON DELETE CASCADE
+      )
+    ''');
+
+    // Create album download indexes
+    await db.execute('CREATE INDEX idx_album_downloads_album_id ON album_downloads(album_id)');
+    await db.execute('CREATE INDEX idx_album_downloads_status ON album_downloads(status)');
   }
 
   // Artist operations
@@ -489,8 +807,26 @@ class DatabaseHelper {
     final db = await database;
     final batch = db.batch();
     final now = DateTime.now().millisecondsSinceEpoch;
-    
+
+    // First, get existing cache status to preserve it
+    final existingSongs = await db.query(
+      'songs',
+      where: 'id IN (${List.filled(songs.length, '?').join(',')})',
+      whereArgs: songs.map((s) => s.id).toList(),
+      columns: ['id', 'is_cached', 'cached_path'],
+    );
+
+    final cacheStatus = <String, Map<String, dynamic>>{};
+    for (final row in existingSongs) {
+      cacheStatus[row['id'] as String] = {
+        'is_cached': row['is_cached'],
+        'cached_path': row['cached_path'],
+      };
+    }
+
     for (final song in songs) {
+      final cachedInfo = cacheStatus[song.id];
+
       batch.insert(
         'songs',
         {
@@ -508,11 +844,14 @@ class DatabaseHelper {
           'suffix': song.suffix,
           'bitRate': song.bitRate,
           'lastSync': now,
+          // Preserve cache status
+          'is_cached': cachedInfo?['is_cached'] ?? 0,
+          'cached_path': cachedInfo?['cached_path'],
         },
         conflictAlgorithm: ConflictAlgorithm.replace,
       );
     }
-    
+
     await batch.commit(noResult: true);
   }
 
@@ -539,7 +878,40 @@ class DatabaseHelper {
       coverArt: map['coverArt'] as String?,
       suffix: map['suffix'] as String?,
       bitRate: map['bitRate'] as int?,
+      isCached: (map['is_cached'] as int?) == 1,
+      cachedPath: map['cached_path'] as String?,
     )).toList();
+  }
+
+  static Future<Song?> getSongById(String songId) async {
+    final db = await database;
+    final maps = await db.query(
+      'songs',
+      where: 'id = ?',
+      whereArgs: [songId],
+      limit: 1,
+    );
+
+    if (maps.isEmpty) return null;
+
+    final map = maps.first;
+    return Song(
+      id: map['id'] as String,
+      title: map['title'] as String,
+      album: map['album'] as String?,
+      albumId: map['albumId'] as String?,
+      artist: map['artist'] as String?,
+      artistId: map['artistId'] as String?,
+      duration: map['duration'] as int?,
+      track: map['track'] as int?,
+      discNumber: map['discNumber'] as int?,
+      discSubtitle: map['discSubtitle'] as String?,
+      coverArt: map['coverArt'] as String?,
+      suffix: map['suffix'] as String?,
+      bitRate: map['bitRate'] as int?,
+      isCached: (map['is_cached'] as int?) == 1,
+      cachedPath: map['cached_path'] as String?,
+    );
   }
 
   // Sync metadata operations
@@ -661,6 +1033,7 @@ class DatabaseHelper {
     await db.delete('cover_art_cache');
     await db.delete('sync_metadata');
     await db.delete('audio_cache');
+    await db.delete('download_queue');
   }
   
   // Audio cache operations
@@ -673,7 +1046,9 @@ class DatabaseHelper {
   }) async {
     final db = await database;
     final id = '${songId}_$format';
-    
+
+    if (kDebugMode) print('[DatabaseHelper] Inserting audio cache for song: $songId, format: $format');
+
     await db.insert(
       'audio_cache',
       {
@@ -687,6 +1062,8 @@ class DatabaseHelper {
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
     );
+
+    if (kDebugMode) print('[DatabaseHelper] Audio cache inserted successfully');
   }
   
   static Future<String?> getAudioCachePath(String songId, String format) async {
@@ -808,7 +1185,424 @@ class DatabaseHelper {
   }
   
   static Future<void> clearAudioCache() async {
+    if (kDebugMode) {
+      print('[DatabaseHelper] WARNING: clearAudioCache called - this will delete all audio cache entries!');
+      print('[DatabaseHelper] Stack trace: ${StackTrace.current}');
+    }
     final db = await database;
-    await db.delete('audio_cache');
+    final rowsDeleted = await db.delete('audio_cache');
+    if (kDebugMode) print('[DatabaseHelper] Deleted $rowsDeleted audio cache entries');
+  }
+
+  static Future<void> clearAllSongCacheStatus() async {
+    if (kDebugMode) print('[DatabaseHelper] WARNING: clearAllSongCacheStatus called - this will reset all song cache status!');
+    final db = await database;
+    final rowsAffected = await db.update(
+      'songs',
+      {'is_cached': 0},
+      where: 'is_cached = ?',
+      whereArgs: [1],
+    );
+    if (kDebugMode) print('[DatabaseHelper] Reset cache status for $rowsAffected songs');
+  }
+
+  // Offline cache management methods
+
+  static Future<void> updateSongCacheStatus(String songId, bool isCached, {String? cachedPath}) async {
+    print('[DatabaseHelper] Updating song cache status - SongID: $songId, IsCached: $isCached, CachedPath: $cachedPath');
+    final db = await database;
+    final result = await db.update(
+      'songs',
+      {
+        'is_cached': isCached ? 1 : 0,
+        'cached_path': cachedPath,
+      },
+      where: 'id = ?',
+      whereArgs: [songId],
+    );
+    print('[DatabaseHelper] Song update completed - Rows affected: $result');
+  }
+
+  
+  static Future<bool> isSongCached(String songId) async {
+    final db = await database;
+    final result = await db.query(
+      'songs',
+      columns: ['is_cached'],
+      where: 'id = ?',
+      whereArgs: [songId],
+    );
+
+    if (result.isEmpty) return false;
+    return (result.first['is_cached'] as int) == 1;
+  }
+
+  static Future<Map<String, dynamic>?> getSongCacheInfo(String songId) async {
+    final db = await database;
+    final result = await db.query(
+      'songs',
+      columns: ['is_cached', 'cached_path'],
+      where: 'id = ?',
+      whereArgs: [songId],
+    );
+
+    if (result.isEmpty) return null;
+    return result.first;
+  }
+
+  
+  static Future<List<Map<String, dynamic>>> getCachedSongs({String? albumId}) async {
+    final db = await database;
+
+    String where = 'is_cached = 1';
+    List<dynamic> whereArgs = [];
+
+    if (albumId != null) {
+      where += ' AND albumId = ?';
+      whereArgs.add(albumId);
+    }
+
+    return await db.query(
+      'songs',
+      where: where,
+      whereArgs: whereArgs,
+      orderBy: 'track ASC, discNumber ASC',
+    );
+  }
+
+  // Download queue tracking methods
+  static Future<void> insertDownloadQueueItem({
+    required String id,
+    required String songId,
+    required String status,
+    int? totalSize,
+    int? downloadedSize,
+    String? error,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.insert(
+      'download_queue',
+      {
+        'id': id,
+        'song_id': songId,
+        'status': status,
+        'total_size': totalSize,
+        'downloaded_size': downloadedSize,
+        'created_at': now,
+        'updated_at': now,
+        'error': error,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<void> updateDownloadQueueProgress(String id, int progress, {int? downloadedSize}) async {
+    final db = await database;
+
+    await db.update(
+      'download_queue',
+      {
+        'progress': progress,
+        'downloaded_size': downloadedSize,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<void> updateDownloadQueueStatus(String id, String status, {String? error}) async {
+    final db = await database;
+
+    await db.update(
+      'download_queue',
+      {
+        'status': status,
+        'error': error,
+        'updated_at': DateTime.now().millisecondsSinceEpoch,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<List<Map<String, dynamic>>> getActiveDownloads() async {
+    final db = await database;
+
+    return await db.query(
+      'download_queue',
+      where: 'status IN (?, ?)',
+      whereArgs: ['pending', 'downloading'],
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  // Album download operations
+  static Future<void> insertAlbumDownload({
+    required String id,
+    required String albumId,
+    required String status,
+    int? totalSize,
+  }) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.insert(
+      'album_downloads',
+      {
+        'id': id,
+        'album_id': albumId,
+        'status': status,
+        'progress': 0,
+        'total_songs': totalSize,
+        'downloaded_songs': 0,
+        'created_at': now,
+        'updated_at': now,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  static Future<void> updateAlbumDownloadStatus(String id, String status, {String? error}) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.update(
+      'album_downloads',
+      {
+        'status': status,
+        'updated_at': now,
+        if (error != null) 'error': error,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<void> updateAlbumDownloadProgress(String id, int progress, {int? downloadedSongs}) async {
+    final db = await database;
+    final now = DateTime.now().millisecondsSinceEpoch;
+
+    await db.update(
+      'album_downloads',
+      {
+        'progress': progress,
+        'updated_at': now,
+        if (downloadedSongs != null) 'downloaded_songs': downloadedSongs,
+      },
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<Map<String, dynamic>?> getAlbumDownload(String albumId) async {
+    final db = await database;
+    final result = await db.query(
+      'album_downloads',
+      where: 'album_id = ?',
+      whereArgs: [albumId],
+      orderBy: 'created_at DESC',
+      limit: 1,
+    );
+    return result.isNotEmpty ? result.first : null;
+  }
+
+  static Future<List<Map<String, dynamic>>> getActiveAlbumDownloads() async {
+    final db = await database;
+
+    return await db.query(
+      'album_downloads',
+      where: 'status IN (?, ?)',
+      whereArgs: ['pending', 'downloading'],
+      orderBy: 'created_at ASC',
+    );
+  }
+
+  static Future<void> deleteAlbumDownload(String id) async {
+    final db = await database;
+    await db.delete(
+      'album_downloads',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<void> updateAlbumCacheStatus(String albumId, bool isCached, {int? cacheSize}) async {
+    final db = await database;
+
+    // This would require an albums table with cache status
+    // For now, we'll track this through album_downloads table
+    if (isCached) {
+      // Mark any active downloads as completed
+      await db.update(
+        'album_downloads',
+        {
+          'status': 'completed',
+          'progress': 100,
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'album_id = ? AND status IN (?, ?)',
+        whereArgs: [albumId, 'pending', 'downloading'],
+      );
+    } else {
+      // Remove completed status if album is no longer cached
+      await db.update(
+        'album_downloads',
+        {
+          'status': 'cancelled',
+          'updated_at': DateTime.now().millisecondsSinceEpoch,
+        },
+        where: 'album_id = ? AND status = ?',
+        whereArgs: [albumId, 'completed'],
+      );
+    }
+  }
+
+  static Future<void> deleteDownloadQueueItem(String id) async {
+    final db = await database;
+    await db.delete(
+      'download_queue',
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
+  static Future<void> clearCompletedDownloads() async {
+    final db = await database;
+    await db.delete(
+      'download_queue',
+      where: 'status IN (?, ?)',
+      whereArgs: ['completed', 'failed'],
+    );
+  }
+
+  // FTS search methods for offline functionality
+  static Future<List<Map<String, dynamic>>> searchSongsFTS(String query) async {
+    final db = await database;
+
+    // Use FTS to search only in cached songs
+    final results = await db.rawQuery('''
+      SELECT s.* FROM songs_fts sf
+      JOIN songs s ON sf.id = s.id
+      WHERE s.is_cached = 1 AND songs_fts MATCH ?
+      ORDER BY bm25(songs_fts)
+    ''', [query]);
+
+    return results;
+  }
+
+  static Future<List<Map<String, dynamic>>> searchAlbumsFTS(String query) async {
+    final db = await database;
+
+    final results = await db.rawQuery('''
+      SELECT a.* FROM albums_fts af
+      JOIN albums a ON af.id = a.id
+      WHERE albums_fts MATCH ?
+      ORDER BY bm25(albums_fts)
+    ''', [query]);
+
+    return results;
+  }
+
+  static Future<List<Map<String, dynamic>>> searchArtistsFTS(String query) async {
+    final db = await database;
+
+    final results = await db.rawQuery('''
+      SELECT a.* FROM artists_fts af
+      JOIN artists a ON af.id = a.id
+      WHERE artists_fts MATCH ?
+      ORDER BY bm25(artists_fts)
+    ''', [query]);
+
+    return results;
+  }
+
+  static Future<Map<String, List<Map<String, dynamic>>>> searchAllFTS(String query) async {
+    final db = await database;
+
+    // Search in all FTS tables, but only return cached items for songs/albums
+    final songs = await db.rawQuery('''
+      SELECT s.* FROM songs_fts sf
+      JOIN songs s ON sf.id = s.id
+      WHERE s.is_cached = 1 AND songs_fts MATCH ?
+      ORDER BY bm25(songs_fts)
+      LIMIT 50
+    ''', [query]);
+
+    final albums = await db.rawQuery('''
+      SELECT a.* FROM albums_fts af
+      JOIN albums a ON af.id = a.id
+      WHERE albums_fts MATCH ?
+      ORDER BY bm25(albums_fts)
+      LIMIT 50
+    ''', [query]);
+
+    final artists = await db.rawQuery('''
+      SELECT a.* FROM artists_fts af
+      JOIN artists a ON af.id = a.id
+      WHERE artists_fts MATCH ?
+      ORDER BY bm25(artists_fts)
+      LIMIT 50
+    ''', [query]);
+
+    return {
+      'songs': songs,
+      'albums': albums,
+      'artists': artists,
+    };
+  }
+
+  // Method to rebuild FTS indexes (useful if they get out of sync)
+  static Future<void> rebuildFTSIndexes() async {
+    final db = await database;
+
+    // Delete and recreate FTS tables
+    await db.execute('DROP TABLE IF EXISTS songs_fts');
+    await db.execute('DROP TABLE IF EXISTS albums_fts');
+    await db.execute('DROP TABLE IF EXISTS artists_fts');
+
+    // Recreate with the same structure
+    await db.execute('''
+      CREATE VIRTUAL TABLE songs_fts
+      USING fts5(
+        id,
+        title,
+        album,
+        artist,
+        albumId,
+        artistId,
+        content='songs',
+        content_rowid='rowid'
+      )
+    ''');
+
+    await db.execute('''
+      CREATE VIRTUAL TABLE albums_fts
+      USING fts5(
+        id,
+        name,
+        artist,
+        artistId,
+        content='albums',
+        content_rowid='rowid'
+      )
+    ''');
+
+    await db.execute('''
+      CREATE VIRTUAL TABLE artists_fts
+      USING fts5(
+        id,
+        name,
+        content='artists',
+        content_rowid='rowid'
+      )
+    ''');
+
+    // Repopulate with current data
+    await db.execute('INSERT INTO songs_fts(id, title, album, artist, albumId, artistId) SELECT id, title, album, artist, albumId, artistId FROM songs');
+    await db.execute('INSERT INTO albums_fts(id, name, artist, artistId) SELECT id, name, artist, artistId FROM albums');
+    await db.execute('INSERT INTO artists_fts(id, name) SELECT id, name FROM artists');
   }
 }

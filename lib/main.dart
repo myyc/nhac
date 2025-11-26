@@ -16,7 +16,10 @@ import 'screens/home_screen.dart';
 import 'services/database_helper.dart';
 import 'services/audio_handler.dart';
 import 'services/navidrome_api.dart';
-import 'theme/app_theme.dart';
+import 'services/album_download_service.dart';
+import 'services/activity_coordinator.dart';
+import 'services/audio_cache_manager.dart';
+import 'dart:async';
 
 late BaseAudioHandler? audioHandler;
 late NhacAudioHandler? actualAudioHandler;
@@ -49,10 +52,14 @@ void main() async {
       username: '',
       password: '',
     );
+    // Create a dummy network provider that will be replaced later
+    final dummyNetworkProvider = NetworkProvider();
+
     // Create the actual handler
     actualAudioHandler = NhacAudioHandler(
       globalAudioPlayer, // Use the shared player instance
       dummyApi, // This will be properly set later in PlayerProvider
+      networkProvider: dummyNetworkProvider, // Will be set later
     );
     
     audioHandler = await AudioService.init(
@@ -97,6 +104,28 @@ class NhacApp extends StatelessWidget {
           ChangeNotifierProvider(create: (_) => CacheProvider()),
           ChangeNotifierProvider(create: (_) => ThemeProvider()),
           ChangeNotifierProvider(create: (_) => NetworkProvider()),
+          ChangeNotifierProvider(create: (_) => ActivityCoordinator()),
+          ChangeNotifierProxyProvider2<AuthProvider, NetworkProvider, AlbumDownloadService?>(
+            create: (_) => null, // Created when auth is ready
+            update: (context, auth, network, previous) {
+              if (auth.api == null) return previous;
+
+              if (previous == null) {
+                // First creation
+                return AlbumDownloadService(
+                  api: auth.api!,
+                  networkProvider: network,
+                );
+              } else {
+                // Update existing instance without losing state
+                previous.updateDependencies(
+                  api: auth.api!,
+                  networkProvider: network,
+                );
+                return previous;
+              }
+            },
+          ),
         ],
         child: Consumer2<ThemeProvider, PlayerProvider>(
           builder: (context, themeProvider, playerProvider, child) {
@@ -143,15 +172,64 @@ class AuthWrapper extends StatefulWidget {
   State<AuthWrapper> createState() => _AuthWrapperState();
 }
 
-class _AuthWrapperState extends State<AuthWrapper> {
+class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
   bool _hasInitializedProviders = false;
-  
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _initializeAuth();
     });
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    super.didChangeAppLifecycleState(state);
+
+    if (!_hasInitializedProviders) return;
+
+    final activityCoordinator = context.read<ActivityCoordinator>();
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
+
+    switch (state) {
+      case AppLifecycleState.paused:
+      case AppLifecycleState.inactive:
+      case AppLifecycleState.hidden:
+        // App going to background - update foreground state
+        debugPrint('[Main] App backgrounded');
+        activityCoordinator.setForegroundState(false);
+        break;
+      case AppLifecycleState.resumed:
+        // App coming to foreground - update foreground state
+        debugPrint('[Main] App resumed');
+        activityCoordinator.setForegroundState(true);
+        break;
+      case AppLifecycleState.detached:
+        // App is detached - no action needed
+        break;
+    }
+
+    // Handle suspend/resume based on activity state
+    if (activityCoordinator.isIdle) {
+      cacheProvider.suspend();
+      networkProvider.suspendHealthChecks();
+      AudioCacheManager().suspend();
+    } else {
+      cacheProvider.resume();
+      if (activityCoordinator.shouldRunHealthChecks) {
+        networkProvider.resumeHealthChecks();
+      }
+      AudioCacheManager().resume();
+    }
   }
 
   Future<void> _initializeAuth() async {
@@ -221,10 +299,37 @@ class _AuthWrapperState extends State<AuthWrapper> {
             final playerProvider = context.read<PlayerProvider>();
             final cacheProvider = context.read<CacheProvider>();
             final networkProvider = context.read<NetworkProvider>();
+            final activityCoordinator = context.read<ActivityCoordinator>();
+            final albumDownloadService = context.read<AlbumDownloadService?>();
+
+            // Wire up ActivityCoordinator for battery optimization
+            playerProvider.setActivityCoordinator(activityCoordinator);
+            albumDownloadService?.setActivityCoordinator(activityCoordinator);
+
+            // Register suspend/resume callbacks with coordinator
+            activityCoordinator.registerSuspendCallback(() {
+              cacheProvider.suspend();
+              networkProvider.suspendHealthChecks();
+              AudioCacheManager().suspend();
+            });
+            activityCoordinator.registerResumeCallback(() {
+              cacheProvider.resume();
+              if (activityCoordinator.shouldRunHealthChecks) {
+                networkProvider.resumeHealthChecks();
+              }
+              AudioCacheManager().resume();
+            });
+
             playerProvider.setApi(authProvider.api!, networkProvider: networkProvider);
             cacheProvider.initialize(authProvider.api!, networkProvider);
-            
+
+            // Enable server health monitoring for connection resilience
+            networkProvider.setApi(authProvider.api!);
+
             // MPRIS is now handled through audio_service, no separate initialization needed
+
+            // Check if this is first run and initialize cache
+            _initializeFirstRunCache(cacheProvider, networkProvider);
           }
           
           return const HomeScreen();
@@ -233,5 +338,39 @@ class _AuthWrapperState extends State<AuthWrapper> {
         return const LoginScreen();
       },
     );
+  }
+
+  Future<void> _initializeFirstRunCache(
+    CacheProvider cacheProvider,
+    NetworkProvider networkProvider,
+  ) async {
+    // Check if this is the first run
+    final firstRunKey = 'first_run_completed';
+    final isFirstRun = await DatabaseHelper.getSyncMetadata(firstRunKey) == null;
+
+    if (isFirstRun) {
+      print('[Main] First run detected, initializing cache...');
+
+      // Don't block the UI, run in background
+      unawaited(() async {
+        try {
+          // Wait a bit for the app to fully initialize
+          await Future.delayed(const Duration(seconds: 5));
+
+          // If online, perform initial cache sync
+          if (!networkProvider.isOffline) {
+            print('[Main] Starting initial library sync...');
+            await cacheProvider.syncFullLibrary();
+            print('[Main] Initial library sync completed');
+          }
+
+          // Mark first run as completed
+          await DatabaseHelper.setSyncMetadata(firstRunKey, 'true');
+          print('[Main] First run initialization completed');
+        } catch (e) {
+          print('[Main] Error during first run initialization: $e');
+        }
+      }());
+    }
   }
 }

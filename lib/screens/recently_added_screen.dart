@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import '../providers/auth_provider.dart';
+import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/album.dart';
 import 'album_detail_screen.dart';
 
@@ -24,8 +26,8 @@ class _RecentlyAddedScreenState extends State<RecentlyAddedScreen> {
   }
 
   Future<void> _loadRecentlyAdded() async {
-    final api = context.read<AuthProvider>().api;
-    if (api == null) return;
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
 
     setState(() {
       _isLoading = true;
@@ -33,7 +35,8 @@ class _RecentlyAddedScreenState extends State<RecentlyAddedScreen> {
     });
 
     try {
-      final albums = await api.getRecentlyAdded(size: 100);
+      // Use offline-aware method
+      final albums = await cacheProvider.getRecentlyAddedOffline(forceRefresh: !networkProvider.isOffline);
       if (mounted) {
         setState(() {
           _albums = albums;

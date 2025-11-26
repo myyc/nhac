@@ -50,7 +50,15 @@ class LibraryScanService {
   void stopPeriodicScanning() {
     _periodicScanTimer?.cancel();
     _periodicScanTimer = null;
+    _statusCheckTimer?.cancel();
+    _statusCheckTimer = null;
     if (kDebugMode) print('[LibraryScan] Stopped periodic scanning');
+  }
+
+  // Resume periodic scanning (for battery optimization)
+  void resumePeriodicScanning() {
+    _startPeriodicScanning();
+    if (kDebugMode) print('[LibraryScan] Resumed periodic scanning');
   }
   
   // Adjust scan interval based on network conditions

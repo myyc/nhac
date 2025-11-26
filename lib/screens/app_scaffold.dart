@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/player_provider.dart';
+import '../providers/network_provider.dart';
 import '../widgets/now_playing_bar.dart';
+import '../widgets/offline_indicator.dart';
 
 class AppScaffold extends StatelessWidget {
   final Widget child;
@@ -27,6 +29,7 @@ class AppScaffold extends StatelessWidget {
       body: Column(
         children: [
           Expanded(child: child),
+          const OfflineIndicator(),
           if (showNowPlayingBar)
             Consumer<PlayerProvider>(
               builder: (context, playerProvider, _) {
