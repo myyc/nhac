@@ -18,11 +18,26 @@ class CustomWindowFrame extends StatefulWidget {
 
 class _CustomWindowFrameState extends State<CustomWindowFrame> {
   bool _isHoveringButtons = false;
+  bool _isMenuOpen = false;
 
-  void _showMenu(BuildContext context) {
+  void _showMenu(BuildContext context, GlobalKey buttonKey) {
+    final RenderBox button = buttonKey.currentContext!.findRenderObject() as RenderBox;
+    final RenderBox overlay = Overlay.of(context).context.findRenderObject() as RenderBox;
+    final buttonPosition = button.localToGlobal(Offset.zero, ancestor: overlay);
+
+    // Position menu below the button, aligned to the right edge
+    final position = RelativeRect.fromLTRB(
+      buttonPosition.dx,
+      buttonPosition.dy + button.size.height,
+      overlay.size.width - buttonPosition.dx - button.size.width,
+      0,
+    );
+
+    setState(() => _isMenuOpen = true);
+
     showMenu(
       context: context,
-      position: const RelativeRect.fromLTRB(0, 48, 0, 0),
+      position: position,
       items: [
         const PopupMenuItem(
           value: 'logout',
@@ -30,6 +45,9 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
         ),
       ],
     ).then((value) {
+      if (mounted) {
+        setState(() => _isMenuOpen = false);
+      }
       if (value == 'logout' && mounted) {
         // Import and call logout from auth provider
         Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
@@ -57,7 +75,7 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
             onEnter: (_) => setState(() => _isHoveringButtons = true),
             onExit: (_) => setState(() => _isHoveringButtons = false),
             child: AnimatedOpacity(
-              opacity: _isHoveringButtons ? 1.0 : 0.0,
+              opacity: (_isHoveringButtons || _isMenuOpen) ? 1.0 : 0.0,
               duration: const Duration(milliseconds: 200),
               child: Container(
                 width: widget.showMenuButton ? 96 : 56,
@@ -97,10 +115,10 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
   }
 }
 
-class WindowButtons extends StatelessWidget {
+class WindowButtons extends StatefulWidget {
   final bool showMenuButton;
-  final Function(BuildContext)? onMenuPressed;
-  
+  final Function(BuildContext, GlobalKey)? onMenuPressed;
+
   const WindowButtons({
     super.key,
     this.showMenuButton = false,
@@ -108,9 +126,16 @@ class WindowButtons extends StatelessWidget {
   });
 
   @override
+  State<WindowButtons> createState() => _WindowButtonsState();
+}
+
+class _WindowButtonsState extends State<WindowButtons> {
+  final GlobalKey _menuButtonKey = GlobalKey();
+
+  @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return Container(
       height: 56,
       decoration: BoxDecoration(
@@ -122,11 +147,12 @@ class WindowButtons extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          if (showMenuButton && onMenuPressed != null)
+          if (widget.showMenuButton && widget.onMenuPressed != null)
             IconButton(
+              key: _menuButtonKey,
               icon: Icon(Icons.menu),
               iconSize: 24,
-              onPressed: () => onMenuPressed!(context),
+              onPressed: () => widget.onMenuPressed!(context, _menuButtonKey),
             ),
           IconButton(
             icon: Icon(Icons.close),

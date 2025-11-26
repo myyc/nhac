@@ -1473,6 +1473,29 @@ class DatabaseHelper {
     return results.map((row) => row['album_id'] as String).toSet();
   }
 
+  /// Get cached albums sorted by play count (for "Popular Offline" section)
+  static Future<List<Album>> getPopularOfflineAlbums({int limit = 18}) async {
+    final db = await database;
+    // Get completed album downloads, ordered by album name
+    final results = await db.rawQuery('''
+      SELECT a.* FROM albums a
+      INNER JOIN album_downloads ad ON a.id = ad.album_id
+      WHERE ad.status = 'completed'
+      ORDER BY a.name ASC
+      LIMIT ?
+    ''', [limit]);
+    return results.map((map) => Album(
+      id: map['id'] as String,
+      name: map['name'] as String,
+      artist: map['artist'] as String?,
+      artistId: map['artistId'] as String?,
+      year: map['year'] as int?,
+      coverArt: map['coverArt'] as String?,
+      songCount: map['songCount'] as int?,
+      duration: map['duration'] as int?,
+    )).toList();
+  }
+
   static Future<void> deleteDownloadQueueItem(String id) async {
     final db = await database;
     await db.delete(
