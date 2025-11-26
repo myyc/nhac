@@ -532,10 +532,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                 final isCurrentSong = playerProvider.currentSong?.id == song.id;
                                 final isPlaying = isCurrentSong && playerProvider.isPlaying;
                                 final playingTrackColor = isCurrentSong ? _getPlayingTrackColor(context) : null;
-                                
+
                                 widgets.add(
                                   Container(
-                                    color: isCurrentSong 
+                                    color: isCurrentSong
                                         ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
                                         : null,
                                     child: ListTile(
@@ -560,11 +560,26 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                           fontWeight: isCurrentSong ? FontWeight.bold : null,
                                         ),
                                       ),
-                                      subtitle: Text(
-                                        song.artist ?? 'Unknown Artist',
-                                        style: TextStyle(
-                                          color: playingTrackColor?.withOpacity(0.8),
-                                        ),
+                                      subtitle: Row(
+                                        children: [
+                                          if (song.isCached) ...[
+                                            Icon(
+                                              Icons.check_circle,
+                                              size: 14,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                            const SizedBox(width: 4),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              song.artist ?? 'Unknown Artist',
+                                              style: TextStyle(
+                                                color: playingTrackColor?.withOpacity(0.8),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       trailing: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -582,11 +597,9 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                                     Text(
                                                       song.suffix!.toUpperCase(),
                                                       style: TextStyle(
-                                                        color: song.isCached
-                                                            ? AppTheme.successColor  // Bright green for cached/offline
-                                                            : Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                                                         fontSize: 11,
-                                                        fontWeight: song.isCached ? FontWeight.w600 : FontWeight.w500,
+                                                        fontWeight: FontWeight.w500,
                                                       ),
                                                     ),
                                                   if (song.suffix != null && song.bitRate != null && song.bitRate! > 0)
@@ -616,9 +629,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                                         return Text(
                                                           text,
                                                           style: TextStyle(
-                                                            color: song.isCached
-                                                                ? AppTheme.successColor.withOpacity(0.7)
-                                                                : Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
+                                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
                                                             fontSize: 10,
                                                             fontWeight: FontWeight.w500,
                                                           ),
@@ -832,15 +843,21 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
       }
     }
 
-    // Update album download status
+    // Remove album download record entirely
     if (_albumDownloadProgress != null) {
+      final downloadId = _albumDownloadProgress!.id;
       final albumDownloadService = context.read<AlbumDownloadService?>();
-      await albumDownloadService?.cancelDownload(_albumDownloadProgress!.id);
+      await albumDownloadService?.cancelDownload(downloadId);
+      // Also delete the record from database to ensure clean state
+      await DatabaseHelper.deleteAlbumDownload(downloadId);
     }
 
     setState(() {
       _albumDownloadProgress = null;
     });
+
+    // Reload songs to update isCached status
+    await _loadAlbumDetails();
 
     if (kDebugMode) {
       print('[AlbumDetailScreen] Album removed from cache successfully');

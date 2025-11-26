@@ -57,6 +57,10 @@ class NetworkProvider extends ChangeNotifier {
   static const Duration _reconnectBaseDelay = Duration(seconds: 2);
   static const Duration _healthCheckInterval = Duration(seconds: 30);
 
+  // Circuit breaker for DNS/network failures
+  int _consecutiveFailures = 0;
+  static const int _failureThresholdForOffline = 3;
+
   NetworkType get currentNetworkType => _currentNetworkType;
   bool get isOffline => _isOffline;
   bool get isOnWifi => _currentNetworkType == NetworkType.wifi;
@@ -245,9 +249,12 @@ class NetworkProvider extends ChangeNotifier {
       await Future.delayed(delay);
     }
 
-    // Max attempts reached
-    _connectionState = ConnectionState.degraded;
-    debugPrint('[NetworkProvider] Reconnection failed after $_reconnectAttempts attempts');
+    // Max attempts reached - go offline
+    _connectionState = ConnectionState.disconnected;
+    _isOffline = true;
+    _serverReachable = false;
+    _connectionEventController.add(ConnectionEvent.disconnected);
+    debugPrint('[NetworkProvider] Reconnection failed after $_reconnectAttempts attempts - now offline');
     notifyListeners();
   }
 
@@ -256,6 +263,40 @@ class NetworkProvider extends ChangeNotifier {
     if (!_isOffline) {
       _reconnectAttempts = 0;
       await _startReconnectionSequence();
+    }
+  }
+
+  /// Report a network failure (called by API on request failures)
+  /// After consecutive failures, sets offline mode
+  void reportNetworkFailure() {
+    _consecutiveFailures++;
+    debugPrint('[NetworkProvider] Network failure reported ($_consecutiveFailures/$_failureThresholdForOffline)');
+
+    if (_consecutiveFailures >= _failureThresholdForOffline && !_isOffline) {
+      _isOffline = true;
+      _serverReachable = false;
+      _connectionState = ConnectionState.disconnected;
+      _connectionEventController.add(ConnectionEvent.disconnected);
+      debugPrint('[NetworkProvider] Circuit breaker triggered - now offline');
+      notifyListeners();
+    }
+  }
+
+  /// Report a successful network request (resets failure counter)
+  void reportNetworkSuccess() {
+    if (_consecutiveFailures > 0) {
+      debugPrint('[NetworkProvider] Network success - resetting failure counter');
+      _consecutiveFailures = 0;
+    }
+
+    if (_isOffline) {
+      _isOffline = false;
+      _serverReachable = true;
+      _connectionState = ConnectionState.connected;
+      _connectionEventController.add(ConnectionEvent.reconnected);
+      debugPrint('[NetworkProvider] Network restored - back online');
+      _startServerHealthMonitoring();
+      notifyListeners();
     }
   }
 

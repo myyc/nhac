@@ -1399,10 +1399,11 @@ class DatabaseHelper {
 
   static Future<Map<String, dynamic>?> getAlbumDownload(String albumId) async {
     final db = await database;
+    // Exclude cancelled downloads - they are effectively "no download"
     final result = await db.query(
       'album_downloads',
-      where: 'album_id = ?',
-      whereArgs: [albumId],
+      where: 'album_id = ? AND status != ?',
+      whereArgs: [albumId, 'cancelled'],
       orderBy: 'created_at DESC',
       limit: 1,
     );
@@ -1458,6 +1459,18 @@ class DatabaseHelper {
         whereArgs: [albumId, 'completed'],
       );
     }
+  }
+
+  /// Get all album IDs that have been fully downloaded (available offline)
+  static Future<Set<String>> getCachedAlbumIds() async {
+    final db = await database;
+    final results = await db.query(
+      'album_downloads',
+      columns: ['album_id'],
+      where: 'status = ?',
+      whereArgs: ['completed'],
+    );
+    return results.map((row) => row['album_id'] as String).toSet();
   }
 
   static Future<void> deleteDownloadQueueItem(String id) async {

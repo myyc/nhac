@@ -33,6 +33,10 @@ class CacheProvider extends ChangeNotifier {
 
   // Offline functionality
   bool get isOffline => _networkProvider?.isOffline ?? false;
+
+  // Check if network is available for API calls (online + server reachable)
+  bool get _canMakeNetworkRequests =>
+      !isOffline && (_networkProvider?.isServerReachable ?? false);
   
   void initialize(NavidromeApi api, NetworkProvider networkProvider) {
     _cacheService = CacheService(api: api);
@@ -41,7 +45,8 @@ class CacheProvider extends ChangeNotifier {
       networkProvider: networkProvider,
     );
     _libraryScanService = LibraryScanService(api: api);
-    
+    _libraryScanService!.setNetworkProvider(networkProvider);
+
     // Listen to library scan changes
     _scanSubscription = _libraryScanService!.libraryChanges.listen((event) {
       if (kDebugMode) {
@@ -142,8 +147,8 @@ class CacheProvider extends ChangeNotifier {
     if (_cacheService == null) return [];
 
     try {
-      // Disable network fallback when offline to prevent API calls
-      final allowNetworkFallback = !isOffline;
+      // Disable network fallback when offline or server unreachable
+      final allowNetworkFallback = _canMakeNetworkRequests;
       return await _cacheService!.getArtists(
         forceRefresh: forceRefresh,
         allowNetworkFallback: allowNetworkFallback,
@@ -177,8 +182,8 @@ class CacheProvider extends ChangeNotifier {
     if (_cacheService == null) return [];
 
     try {
-      // Disable network fallback when offline to prevent API calls
-      final allowNetworkFallback = !isOffline;
+      // Disable network fallback when offline or server unreachable
+      final allowNetworkFallback = _canMakeNetworkRequests;
       return await _cacheService!.getAlbums(
         forceRefresh: forceRefresh,
         allowNetworkFallback: allowNetworkFallback,
@@ -193,8 +198,8 @@ class CacheProvider extends ChangeNotifier {
     if (_cacheService == null) return [];
 
     try {
-      // Disable network fallback when offline to prevent API calls
-      final allowNetworkFallback = !isOffline;
+      // Disable network fallback when offline or server unreachable
+      final allowNetworkFallback = _canMakeNetworkRequests;
       return await _cacheService!.getAlbumsByArtist(
         artistId,
         forceRefresh: forceRefresh,
@@ -210,8 +215,8 @@ class CacheProvider extends ChangeNotifier {
     if (_cacheService == null) return [];
 
     try {
-      // Disable network fallback when offline to prevent API calls
-      final allowNetworkFallback = !isOffline;
+      // Disable network fallback when offline or server unreachable
+      final allowNetworkFallback = _canMakeNetworkRequests;
       return await _cacheService!.getSongsByAlbum(
         albumId,
         forceRefresh: forceRefresh,
@@ -247,6 +252,8 @@ class CacheProvider extends ChangeNotifier {
   
   String getCoverArtUrl(String? coverArtId, {int size = 300}) {
     if (_cacheService == null || coverArtId == null) return '';
+    // Always return URL - CachedNetworkImage will use local cache first
+    // and only attempt network request if not cached
     return _cacheService!.getCoverArtUrl(coverArtId, size: size);
   }
   
@@ -415,7 +422,7 @@ class CacheProvider extends ChangeNotifier {
 
   // Auto-sync method that checks if sync is needed
   Future<void> autoSync() async {
-    if (isOffline) return;
+    if (!_canMakeNetworkRequests) return;
 
     try {
       // Check if we need quick sync (recently added)

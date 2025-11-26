@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../models/artist.dart';
 import '../models/album.dart';
 import '../models/song.dart';
+import '../providers/network_provider.dart';
 import 'auth_service.dart' show LoginResult;
 
 class NavidromeApi {
@@ -26,6 +27,14 @@ class NavidromeApi {
   static const int _maxRetries = 3;
   static const Duration _initialDelay = Duration(milliseconds: 500);
   static const Duration _requestTimeout = Duration(seconds: 15);
+
+  // Network provider for reporting failures (circuit breaker)
+  NetworkProvider? _networkProvider;
+
+  /// Set the network provider for failure reporting
+  void setNetworkProvider(NetworkProvider provider) {
+    _networkProvider = provider;
+  }
 
   NavidromeApi({
     required this.baseUrl,
@@ -125,12 +134,16 @@ class NavidromeApi {
           throw Exception('API error: ${error['message']} (code: ${error['code']})');
         }
 
+        // Report success to reset circuit breaker
+        _networkProvider?.reportNetworkSuccess();
         return subsonicResponse;
       } catch (e) {
         attempts++;
         lastError = e;
 
         if (!_isRetryable(e) || attempts >= _maxRetries) {
+          // Report failure to trigger circuit breaker
+          _networkProvider?.reportNetworkFailure();
           rethrow;
         }
 

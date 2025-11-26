@@ -24,6 +24,7 @@ import 'dart:async';
 late BaseAudioHandler? audioHandler;
 late NhacAudioHandler? actualAudioHandler;
 late AudioPlayer globalAudioPlayer;
+bool _isCleanedUp = false;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -187,6 +188,7 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _cleanupBeforeExit();
     super.dispose();
   }
 
@@ -214,7 +216,9 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
         activityCoordinator.setForegroundState(true);
         break;
       case AppLifecycleState.detached:
-        // App is detached - no action needed
+        // App is being terminated - clean up resources
+        debugPrint('[Main] App detached - cleaning up');
+        _cleanupBeforeExit();
         break;
     }
 
@@ -234,6 +238,34 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
 
   Future<void> _initializeAuth() async {
     await context.read<AuthProvider>().initialize();
+  }
+
+  void _cleanupBeforeExit() {
+    // Prevent double cleanup
+    if (_isCleanedUp) return;
+    _isCleanedUp = true;
+
+    debugPrint('[Main] Cleaning up before exit...');
+
+    // Stop the global audio player immediately to prevent hanging
+    try {
+      globalAudioPlayer.stop();
+    } catch (e) {
+      debugPrint('[Main] Error stopping audio: $e');
+    }
+
+    // Cancel any background tasks
+    if (_hasInitializedProviders) {
+      try {
+        context.read<CacheProvider>().suspend();
+        context.read<NetworkProvider>().suspendHealthChecks();
+        AudioCacheManager().suspend();
+      } catch (e) {
+        debugPrint('[Main] Error during cleanup: $e');
+      }
+    }
+
+    debugPrint('[Main] Cleanup complete');
   }
 
   @override
@@ -325,6 +357,8 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
 
             // Enable server health monitoring for connection resilience
             networkProvider.setApi(authProvider.api!);
+            // Allow API to report failures to NetworkProvider (circuit breaker)
+            authProvider.api!.setNetworkProvider(networkProvider);
 
             // MPRIS is now handled through audio_service, no separate initialization needed
 

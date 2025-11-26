@@ -80,7 +80,8 @@ class AggressiveCacheService {
   Future<void> smartSync() async {
     if (_isSyncing || _isSuspended) return;
     if (networkProvider.isOffline) return;
-    
+    if (!networkProvider.isServerReachable) return;  // Don't sync when server is unreachable
+
     _isSyncing = true;
     
     try {

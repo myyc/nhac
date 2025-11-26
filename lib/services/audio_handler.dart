@@ -227,75 +227,96 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
       _coverArtPaths = List.filled(songs.length, null);
     }
 
-    // Convert songs to MediaItems with cached art paths
-    final mediaItems = <MediaItem>[];
-    for (int i = 0; i < songs.length; i++) {
-      final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
-      mediaItems.add(await _createMediaItem(songs[i], coverArtPath: coverArtPath));
-    }
+    // Check offline status once
+    final isOffline = networkProvider?.isOffline ?? _networkProvider?.isOffline ?? false;
 
-    // Update the queue
-    queue.add(mediaItems);
-
-    // Create audio sources for all songs
+    // Create audio sources and media items, tracking playable songs
     final audioSources = <AudioSource>[];
+    final mediaItems = <MediaItem>[];
+    final playableSongs = <Song>[];
+    int adjustedStartIndex = 0;
+
     for (int i = 0; i < songs.length; i++) {
       final song = songs[i];
       final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
 
       // Check for cached audio file in songs table
-      String? audioSource;
+      String? audioSourcePath;
 
       final songCacheInfo = await DatabaseHelper.getSongCacheInfo(song.id);
       if (songCacheInfo != null && songCacheInfo['cached_path'] != null) {
         final cachedPath = songCacheInfo['cached_path'] as String;
         final cachedFile = File(cachedPath);
         if (await cachedFile.exists() && await cachedFile.length() > 1000) {
-          audioSource = cachedPath;
+          audioSourcePath = cachedPath;
           if (i == startIndex) {
             if (kDebugMode) print('[AudioHandler] Using downloaded file for ${song.title}');
           }
         }
       }
 
-      // Fall back to streaming if not cached
-      if (audioSource == null) {
+      // Fall back to streaming if not cached - but ONLY if online
+      if (audioSourcePath == null) {
+        if (isOffline) {
+          // Offline and no cached file - skip this song
+          if (kDebugMode) print('[AudioHandler] Skipping ${song.title} - offline and not cached');
+          continue;
+        }
         final shouldTranscode = networkProvider != null &&
                                !networkProvider!.isOnWifi &&
                                !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-        audioSource = _api.getStreamUrl(song.id, transcode: shouldTranscode);
+        audioSourcePath = _api.getStreamUrl(song.id, transcode: shouldTranscode);
         if (i == startIndex) {
           if (kDebugMode) print('[AudioHandler] Using stream for ${song.title}');
         }
       }
 
+      // Track if this is our start song
+      if (i == startIndex) {
+        adjustedStartIndex = audioSources.length;
+      }
+
+      // Create media item for this playable song
+      final mediaItem = await _createMediaItem(song, coverArtPath: coverArtPath);
+      mediaItems.add(mediaItem);
+      playableSongs.add(song);
+
       // Create the appropriate audio source
-      if (audioSource.startsWith('/')) {
+      if (audioSourcePath.startsWith('/')) {
         // Local file path
         audioSources.add(AudioSource.uri(
-          Uri.file(audioSource),
-          tag: await _createMediaItem(song, coverArtPath: coverArtPath),
+          Uri.file(audioSourcePath),
+          tag: mediaItem,
         ));
       } else {
         // Stream URL
         audioSources.add(AudioSource.uri(
-          Uri.parse(audioSource),
-          tag: await _createMediaItem(song, coverArtPath: coverArtPath),
+          Uri.parse(audioSourcePath),
+          tag: mediaItem,
         ));
       }
     }
+
+    // Update internal queue to only playable songs
+    _queue = playableSongs;
+    _currentIndex = adjustedStartIndex;
+
+    // Update the queue with playable media items
+    queue.add(mediaItems);
 
     // Use setAudioSources for all platforms
     if (audioSources.isNotEmpty) {
       await _player.setAudioSources(
         audioSources,
-        initialIndex: startIndex,
+        initialIndex: adjustedStartIndex,
       );
-    }
 
-    // Update the current media item
-    if (songs.isNotEmpty && startIndex < mediaItems.length) {
-      mediaItem.add(mediaItems[startIndex]);
+      // Update the current media item
+      if (adjustedStartIndex < mediaItems.length) {
+        mediaItem.add(mediaItems[adjustedStartIndex]);
+      }
+    } else if (isOffline) {
+      if (kDebugMode) print('[AudioHandler] No playable songs available offline');
     }
   }
   

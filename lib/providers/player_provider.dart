@@ -426,14 +426,24 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> _preloadNextCoverArt() async {
-    if (_cacheService != null && 
-        _currentIndex < _queue.length - 1 && 
-        _queue[_currentIndex + 1].coverArt != null) {
+    if (_currentIndex >= _queue.length - 1) return;
+
+    final nextCoverArt = _queue[_currentIndex + 1].coverArt;
+    if (nextCoverArt == null) return;
+
+    // Check if already cached locally
+    final localPath = await DatabaseHelper.getCoverArtLocalPath(nextCoverArt);
+    if (localPath != null) {
+      // Already cached locally, no action needed
+      return;
+    }
+
+    // Not cached locally - only fetch from network if online
+    if (_networkProvider?.isOffline == true) return;
+
+    if (_cacheService != null) {
       try {
-        await _cacheService!.getCachedCoverArt(
-          _queue[_currentIndex + 1].coverArt,
-          size: 600,
-        );
+        await _cacheService!.getCachedCoverArt(nextCoverArt, size: 600);
       } catch (e) {
         print('Error pre-caching next cover art: $e');
       }
@@ -1109,23 +1119,35 @@ class PlayerProvider extends ChangeNotifier {
   
   Future<void> _preloadUpcomingTracks(Duration bufferNeeded) async {
     if (_api == null) return;
-    
+
+    final isOffline = _networkProvider?.isOffline == true;
     var totalPreloaded = Duration.zero;
     var trackIndex = _currentIndex + 1;
-    
+
     while (trackIndex < _queue.length && totalPreloaded < bufferNeeded) {
       final song = _queue[trackIndex];
-      
+
       // Check if already cached in the cache manager (not just our local tracking)
       final cachedPlayer = _cacheManager.getCachedPlayer(song.id);
       if (cachedPlayer == null) {
-        // Not cached, so preload it
-        final url = _api!.getStreamUrl(song.id);
-        final player = await _cacheManager.preloadTrack(song.id, url);
-        
-        if (player != null) {
-          _preloadedSongIds.add(song.id);
+        // Check if we have this song cached locally on disk
+        final cachedPath = await _getCachedAudioPath(song.id);
+
+        if (cachedPath != null) {
+          // Cached locally - preload from file
+          final player = await _cacheManager.preloadTrack(song.id, cachedPath);
+          if (player != null) {
+            _preloadedSongIds.add(song.id);
+          }
+        } else if (!isOffline) {
+          // Not cached and online - preload from network
+          final url = _api!.getStreamUrl(song.id);
+          final player = await _cacheManager.preloadTrack(song.id, url);
+          if (player != null) {
+            _preloadedSongIds.add(song.id);
+          }
         }
+        // If offline and not cached locally, skip this track
       }
       
       // Add the duration of this track to our total
@@ -1165,23 +1187,43 @@ class PlayerProvider extends ChangeNotifier {
 
   /// Extract colors from the current song's album art
   Future<void> _extractColorsFromCurrentSong() async {
-    if (_currentSong?.coverArt == null || _api == null) {
+    if (_currentSong?.coverArt == null) {
       _currentColors = ExtractedColors.defaultColors();
       notifyListeners();
       return;
     }
 
     try {
-      // Get the cover art URL using the API method
-      final imageUrl = _api!.getCoverArtUrl(_currentSong!.coverArt, size: 400);
-      
-      // Extract colors with caching
       final cacheKey = 'colors_${_currentSong!.coverArt}_400';
-      _currentColors = await _colorExtractionService.extractColorsFromImage(
-        imageUrl,
-        cacheKey: cacheKey,
-      );
-      
+
+      // First try to use locally cached cover art
+      final localPath = await DatabaseHelper.getCoverArtLocalPath(_currentSong!.coverArt!);
+      if (localPath != null) {
+        final file = File(localPath);
+        if (await file.exists()) {
+          _currentColors = await _colorExtractionService.extractColorsFromLocalFile(
+            localPath,
+            cacheKey: cacheKey,
+          );
+          notifyListeners();
+          return;
+        }
+      }
+
+      // Fall back to network URL only if online and API available
+      final isOffline = _networkProvider?.isOffline ?? false;
+      if (_api != null && !isOffline) {
+        final imageUrl = _api!.getCoverArtUrl(_currentSong!.coverArt, size: 400);
+        _currentColors = await _colorExtractionService.extractColorsFromImage(
+          imageUrl,
+          cacheKey: cacheKey,
+        );
+        notifyListeners();
+        return;
+      }
+
+      // Offline and no cached cover art - use defaults
+      _currentColors = ExtractedColors.defaultColors();
       notifyListeners();
     } catch (e) {
       print('Error extracting colors from album art: $e');
