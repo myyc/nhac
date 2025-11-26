@@ -3,9 +3,11 @@ import 'package:flutter/foundation.dart';
 import 'navidrome_api.dart';
 import 'database_helper.dart';
 import '../models/album.dart';
+import '../providers/network_provider.dart';
 
 class LibraryScanService {
   final NavidromeApi api;
+  NetworkProvider? _networkProvider;
   Timer? _statusCheckTimer;
   Timer? _periodicScanTimer;
   bool _isScanning = false;
@@ -29,6 +31,17 @@ class LibraryScanService {
     // Start periodic scanning when service is created
     _startPeriodicScanning();
   }
+
+  /// Set the network provider for offline checks
+  void setNetworkProvider(NetworkProvider provider) {
+    _networkProvider = provider;
+  }
+
+  /// Check if we can make network requests
+  bool get _canMakeNetworkRequests {
+    if (_networkProvider == null) return true;  // No provider, assume online
+    return !_networkProvider!.isOffline && _networkProvider!.isServerReachable;
+  }
   
   // Start periodic scanning
   void _startPeriodicScanning({Duration? customInterval}) {
@@ -50,7 +63,15 @@ class LibraryScanService {
   void stopPeriodicScanning() {
     _periodicScanTimer?.cancel();
     _periodicScanTimer = null;
+    _statusCheckTimer?.cancel();
+    _statusCheckTimer = null;
     if (kDebugMode) print('[LibraryScan] Stopped periodic scanning');
+  }
+
+  // Resume periodic scanning (for battery optimization)
+  void resumePeriodicScanning() {
+    _startPeriodicScanning();
+    if (kDebugMode) print('[LibraryScan] Resumed periodic scanning');
   }
   
   // Adjust scan interval based on network conditions
@@ -66,6 +87,12 @@ class LibraryScanService {
   
   // Perform a periodic scan if enough time has passed
   Future<void> _performPeriodicScan() async {
+    // Don't scan when offline or server unreachable
+    if (!_canMakeNetworkRequests) {
+      if (kDebugMode) print('[LibraryScan] Skipping periodic scan - offline or server unreachable');
+      return;
+    }
+
     // Check if enough time has passed since last scan
     if (_lastScanTime != null) {
       final timeSinceLastScan = DateTime.now().difference(_lastScanTime!);
@@ -76,24 +103,30 @@ class LibraryScanService {
         return;
       }
     }
-    
+
     // Don't start a new scan if one is already running
     if (_isScanning) {
       if (kDebugMode) print('[LibraryScan] Skipping periodic scan - scan already in progress');
       return;
     }
-    
+
     if (kDebugMode) print('[LibraryScan] Starting periodic scan');
     await startBackgroundScan();
   }
   
   // Start a background library scan on app startup
   Future<void> startBackgroundScan() async {
+    // Don't scan when offline or server unreachable
+    if (!_canMakeNetworkRequests) {
+      if (kDebugMode) print('[LibraryScan] Cannot start scan - offline or server unreachable');
+      return;
+    }
+
     if (_isScanning) {
       if (kDebugMode) print('[LibraryScan] Scan already in progress');
       return;
     }
-    
+
     try {
       // Record scan time
       _lastScanTime = DateTime.now();

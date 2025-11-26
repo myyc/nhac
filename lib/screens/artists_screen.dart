@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/artist.dart';
 import '../widgets/cached_cover_image.dart';
 import '../widgets/pull_to_search.dart';
@@ -36,7 +37,9 @@ class _ArtistsScreenState extends State<ArtistsScreen> {
     });
 
     try {
-      final artists = await cacheProvider.getArtists();
+      // Check if offline
+      final networkProvider = context.read<NetworkProvider>();
+      final artists = await cacheProvider.getArtists(forceRefresh: !networkProvider.isOffline);
       if (mounted) {
         setState(() {
           _artists = artists;

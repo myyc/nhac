@@ -22,6 +22,8 @@ class Song {
   final DateTime? starred;
   final String? type;
   final int? bookmarkPosition;
+  final bool isCached;
+  final String? cachedPath;
 
   Song({
     required this.id,
@@ -47,6 +49,8 @@ class Song {
     this.starred,
     this.type,
     this.bookmarkPosition,
+    this.isCached = false,
+    this.cachedPath,
   });
 
   factory Song.fromJson(Map<String, dynamic> json) {

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
@@ -37,6 +38,39 @@ class ColorExtractionService {
       // Cache the results
       _colorCache[key] = extractedColors;
       
+      return extractedColors;
+    } catch (e) {
+      // Return default colors if extraction fails
+      return ExtractedColors.defaultColors();
+    }
+  }
+
+  /// Extracts colors from a local image file
+  Future<ExtractedColors> extractColorsFromLocalFile(String filePath, {String? cacheKey}) async {
+    final key = cacheKey ?? filePath;
+
+    // Return cached colors if available
+    if (_colorCache.containsKey(key)) {
+      return _colorCache[key]!;
+    }
+
+    try {
+      // Create image provider from local file
+      final imageProvider = FileImage(File(filePath));
+
+      // Generate palette from the image
+      final paletteGenerator = await PaletteGenerator.fromImageProvider(
+        imageProvider,
+        size: const Size(200, 200), // Resize for faster processing
+        maximumColorCount: 16, // Limit colors for better performance
+      );
+
+      // Extract the most suitable colors
+      final extractedColors = _processColors(paletteGenerator);
+
+      // Cache the results
+      _colorCache[key] = extractedColors;
+
       return extractedColors;
     } catch (e) {
       // Return default colors if extraction fails

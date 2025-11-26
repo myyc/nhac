@@ -7,11 +7,14 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
+import '../providers/network_provider.dart';
 import '../models/album.dart';
 import '../widgets/offline_indicator.dart';
 import '../widgets/cached_cover_image.dart';
 import '../widgets/pull_to_search.dart';
+import '../widgets/pull_to_refresh.dart';
 import '../services/library_scan_service.dart';
+import '../services/database_helper.dart';
 import 'album_detail_screen.dart';
 
 class HomeView extends StatefulWidget {
@@ -27,52 +30,150 @@ class _HomeViewState extends State<HomeView> {
   List<Album>? _recentlyAdded;
   List<Album>? _mostPlayed;
   List<Album>? _random;
+  List<Album>? _popularOffline;
+  Set<String> _cachedAlbumIds = {};
   bool _isLoading = true;
   StreamSubscription<LibraryChangeEvent>? _libraryUpdateSubscription;
+  NetworkProvider? _networkProvider;
 
   @override
   void initState() {
     super.initState();
     _loadData();
     _listenForLibraryUpdates();
+    // Listen for network state changes
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _networkProvider = context.read<NetworkProvider>();
+      _networkProvider?.addListener(_onNetworkStateChanged);
+    });
+  }
+
+  void _onNetworkStateChanged() {
+    if (mounted) {
+      // Reload data without showing loading spinner
+      _loadData(showLoading: false);
+    }
+  }
+
+  Future<void> _handleRefresh() async {
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
+
+    if (!networkProvider.isOffline) {
+      // Sync library when refreshing
+      await cacheProvider.syncRecentlyAdded();
+    }
+
+    // Reload data
+    await _loadData(forceRefresh: true, showLoading: false);
   }
 
   @override
   void dispose() {
     _libraryUpdateSubscription?.cancel();
+    _networkProvider?.removeListener(_onNetworkStateChanged);
     super.dispose();
   }
-  
+
   void _listenForLibraryUpdates() {
     final cacheProvider = context.read<CacheProvider>();
     _libraryUpdateSubscription = cacheProvider.libraryUpdates.listen((event) {
       if (event.hasChanges && mounted) {
         // Simply refresh the data to show new albums
-        _loadData();
+        _loadData(showLoading: false);
       }
     });
   }
 
-  Future<void> _loadData() async {
+  Future<void> _loadData({bool forceRefresh = false, bool showLoading = true}) async {
     final api = context.read<AuthProvider>().api;
-    if (api == null) return;
+    final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
 
-    setState(() {
-      _isLoading = true;
-    });
+    debugPrint('[HomeView] _loadData called - api: ${api != null}, forceRefresh: $forceRefresh, showLoading: $showLoading');
+
+    // Only show loading spinner on first load (when no data exists)
+    if (showLoading && _recentlyAdded == null) {
+      setState(() {
+        _isLoading = true;
+      });
+    }
 
     try {
-      final futures = await Future.wait([
-        api.getAlbumList2(type: 'newest', size: 18),
-        api.getAlbumList2(type: 'frequent', size: 18),
-        api.getAlbumList2(type: 'random', size: 18),
-      ]);
+      List<Album> recentlyAdded = [];
+      List<Album> mostPlayed = [];
+      List<Album> random = [];
+      List<Album> popularOffline = [];
+
+      // Always load cached album IDs for opacity
+      final cachedAlbumIds = await DatabaseHelper.getCachedAlbumIds();
+      debugPrint('[HomeView] Cached album IDs: ${cachedAlbumIds.length}');
+
+      // Always load popular offline albums (for when we switch to offline mode)
+      popularOffline = await DatabaseHelper.getPopularOfflineAlbums();
+      debugPrint('[HomeView] Popular offline albums: ${popularOffline.length}');
+
+      // ALWAYS try cache first - this ensures we show something immediately
+      try {
+        recentlyAdded = await cacheProvider.getRecentlyAdded(forceRefresh: false);
+        debugPrint('[HomeView] Recently added from cache: ${recentlyAdded.length}');
+      } catch (e) {
+        debugPrint('[HomeView] Error loading recently added: $e');
+      }
+
+      // If cache is empty, try getting all albums
+      if (recentlyAdded.isEmpty) {
+        debugPrint('[HomeView] Cache empty, trying all albums...');
+        try {
+          final allAlbums = await cacheProvider.getAlbums(forceRefresh: false);
+          debugPrint('[HomeView] All albums from cache: ${allAlbums.length}');
+          allAlbums.sort((a, b) => b.id.compareTo(a.id));
+          recentlyAdded = allAlbums.take(18).toList();
+        } catch (e) {
+          debugPrint('[HomeView] Error loading all albums: $e');
+        }
+      }
+
+      // Update UI with cached data immediately
+      debugPrint('[HomeView] Setting state with ${recentlyAdded.length} albums, mounted: $mounted');
+      if (mounted && recentlyAdded.isNotEmpty) {
+        setState(() {
+          _recentlyAdded = recentlyAdded;
+          _popularOffline = popularOffline;
+          _cachedAlbumIds = cachedAlbumIds;
+          _isLoading = false;
+        });
+      }
+
+      // Then try to refresh from network if online and not forced offline
+      if (!networkProvider.isOffline && api != null) {
+        try {
+          final freshRecent = await cacheProvider.getRecentlyAdded(forceRefresh: forceRefresh);
+          if (freshRecent.isNotEmpty) recentlyAdded = freshRecent;
+        } catch (e) {
+          // Keep cached data on error
+        }
+
+        try {
+          mostPlayed = await api.getAlbumList2(type: 'frequent', size: 18);
+        } catch (e) {
+          mostPlayed = _mostPlayed ?? [];
+        }
+
+        try {
+          random = await api.getAlbumList2(type: 'random', size: 18);
+        } catch (e) {
+          random = _random ?? [];
+        }
+      }
 
       if (mounted) {
         setState(() {
-          _recentlyAdded = futures[0];
-          _mostPlayed = futures[1];
-          _random = futures[2];
+          _recentlyAdded = recentlyAdded;
+          _mostPlayed = mostPlayed;
+          _random = random;
+          _popularOffline = popularOffline;
+          _cachedAlbumIds = cachedAlbumIds;
           _isLoading = false;
         });
       }
@@ -85,7 +186,7 @@ class _HomeViewState extends State<HomeView> {
     }
   }
 
-  Widget _buildSection(String title, List<Album>? albums) {
+  Widget _buildSection(String title, List<Album>? albums, {required bool isOffline}) {
     if (albums == null || albums.isEmpty) return const SizedBox.shrink();
 
     // Calculate scroll amount: 3 albums * (170 width + 16 margin)
@@ -95,6 +196,8 @@ class _HomeViewState extends State<HomeView> {
       title: title,
       albums: albums,
       scrollAmount: scrollAmount,
+      isOffline: isOffline,
+      cachedAlbumIds: _cachedAlbumIds,
       onAlbumTap: (album) {
         Navigator.push(
           context,
@@ -115,68 +218,80 @@ class _HomeViewState extends State<HomeView> {
       return const Center(child: CircularProgressIndicator());
     }
 
-    Widget listView = ListView(
-      children: [
-        const SizedBox(height: 16),
+    return Consumer<NetworkProvider>(
+      builder: (context, networkProvider, _) {
+        final isOffline = networkProvider.isOffline;
 
-        // Welcome message with offline indicator
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 20),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+        Widget listView = ListView(
+          children: [
+            const SizedBox(height: 16),
+
+            // Welcome message with offline indicator
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 20),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Expanded(
-                    child: Text(
-                      _getGreeting(),
-                      style: Theme.of(context).textTheme.headlineLarge?.copyWith(
-                        fontWeight: FontWeight.w800,
-                        letterSpacing: -0.8,
-                        height: 1.1,
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Expanded(
+                        child: Text(
+                          _getGreeting(),
+                          style: Theme.of(context).textTheme.headlineLarge?.copyWith(
+                            fontWeight: FontWeight.w800,
+                            letterSpacing: -0.8,
+                            height: 1.1,
+                          ),
+                        ),
                       ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    'What would you like to listen to today?',
+                    style: Theme.of(context).textTheme.bodyLarge?.copyWith(
+                      color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
+                      letterSpacing: -0.1,
                     ),
                   ),
-                  const OfflineIndicator(),
                 ],
               ),
-              const SizedBox(height: 4),
-              Text(
-                'What would you like to listen to today?',
-                style: Theme.of(context).textTheme.bodyLarge?.copyWith(
-                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.7),
-                  letterSpacing: -0.1,
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 32),
+            ),
+            const SizedBox(height: 32),
 
-        _buildSection('Recently Added', _recentlyAdded),
-        _buildSection('Most Played', _mostPlayed),
-        _buildSection('Discover', _random),
+            _buildSection('Recently Added', _recentlyAdded, isOffline: isOffline),
+            _buildSection('Most Played', _mostPlayed, isOffline: isOffline),
+            // Show "Popular Offline" instead of "Discover" when offline
+            if (isOffline)
+              _buildSection('Popular Offline', _popularOffline, isOffline: isOffline)
+            else
+              _buildSection('Discover', _random, isOffline: isOffline),
 
-        const SizedBox(height: 80), // Space for player bar
-      ],
+            const SizedBox(height: 80), // Space for player bar
+          ],
+        );
+
+        // Wrap the entire ListView with MoveWindow for desktop
+        if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
+          listView = MoveWindow(child: listView);
+        }
+
+        // On mobile, use PullToSearch only (no refresh - search replaces it)
+        if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
+          return PullToSearch(
+            onSearchTriggered: widget.onOpenSearch!,
+            child: listView,
+          );
+        }
+
+        // On desktop, use PullToRefresh
+        return PullToRefresh(
+          onRefresh: _handleRefresh,
+          child: listView,
+        );
+      },
     );
-
-    // Wrap the entire ListView with MoveWindow for desktop
-    if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-      listView = MoveWindow(child: listView);
-    }
-
-    // Add pull-to-search wrapper on mobile
-    if ((Platform.isAndroid || Platform.isIOS) && widget.onOpenSearch != null) {
-      return PullToSearch(
-        onSearchTriggered: widget.onOpenSearch!,
-        triggerThreshold: 80.0,
-        child: listView,
-      );
-    }
-
-    return listView;
   }
 
   String _getGreeting() {
@@ -196,12 +311,16 @@ class _AlbumSection extends StatefulWidget {
   final List<Album> albums;
   final double scrollAmount;
   final Function(Album) onAlbumTap;
+  final bool isOffline;
+  final Set<String> cachedAlbumIds;
 
   const _AlbumSection({
     required this.title,
     required this.albums,
     required this.scrollAmount,
     required this.onAlbumTap,
+    required this.isOffline,
+    required this.cachedAlbumIds,
   });
 
   @override
@@ -320,11 +439,17 @@ class _AlbumSectionState extends State<_AlbumSection> {
               scrollDirection: Axis.horizontal,
               padding: const EdgeInsets.only(left: 20, right: 20),
               itemCount: widget.albums.length,
-              itemBuilder: (context, index) => _AlbumCard(
-                album: widget.albums[index],
-                onTap: () => widget.onAlbumTap(widget.albums[index]),
-                isLast: index == widget.albums.length - 1,
-              ),
+              itemBuilder: (context, index) {
+                final album = widget.albums[index];
+                final isCached = widget.cachedAlbumIds.contains(album.id);
+                return _AlbumCard(
+                  album: album,
+                  onTap: () => widget.onAlbumTap(album),
+                  isLast: index == widget.albums.length - 1,
+                  isOffline: widget.isOffline,
+                  isCached: isCached,
+                );
+              },
             ),
           ),
         ),
@@ -339,17 +464,26 @@ class _AlbumCard extends StatelessWidget {
   final VoidCallback onTap;
   final double size;
   final bool isLast;
+  final bool isOffline;
+  final bool isCached;
 
   const _AlbumCard({
     required this.album,
     required this.onTap,
     this.size = 160,
     this.isLast = false,
+    required this.isOffline,
+    required this.isCached,
   });
 
   @override
   Widget build(BuildContext context) {
-    return MouseRegion(
+    // When offline, non-cached albums appear faded
+    final opacity = (isOffline && !isCached) ? 0.4 : 1.0;
+
+    return Opacity(
+      opacity: opacity,
+      child: MouseRegion(
       cursor: SystemMouseCursors.click,
       child: GestureDetector(
         onTap: onTap,
@@ -466,6 +600,7 @@ class _AlbumCard extends StatelessWidget {
             ],
           ),
         ),
+      ),
       ),
     );
   }

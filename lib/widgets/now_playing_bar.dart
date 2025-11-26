@@ -133,11 +133,16 @@ class NowPlayingBar extends StatelessWidget {
                         Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.skip_previous),
-                              onPressed: playerProvider.currentIndex > 0
-                                  ? playerProvider.previous
-                                  : null,
+                            SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.skip_previous, size: 22),
+                                onPressed: playerProvider.currentIndex > 0
+                                    ? playerProvider.previous
+                                    : null,
+                              ),
                             ),
                             Material(
                               color: extractedColors?.primary ?? theme.colorScheme.primary,
@@ -159,11 +164,16 @@ class NowPlayingBar extends StatelessWidget {
                                 ),
                               ),
                             ),
-                            IconButton(
-                              icon: const Icon(Icons.skip_next),
-                              onPressed: playerProvider.currentIndex < playerProvider.queue.length - 1
-                                  ? playerProvider.next
-                                  : null,
+                            SizedBox(
+                              width: 36,
+                              height: 36,
+                              child: IconButton(
+                                padding: EdgeInsets.zero,
+                                icon: const Icon(Icons.skip_next, size: 22),
+                                onPressed: playerProvider.currentIndex < playerProvider.queue.length - 1
+                                    ? playerProvider.next
+                                    : null,
+                              ),
                             ),
                           ],
                         ),

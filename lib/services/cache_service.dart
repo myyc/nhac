@@ -26,6 +26,16 @@ class CacheService {
   Future<bool> needsQuickSync() async {
     return await DatabaseHelper.needsSync('recently_added', _quickSyncInterval);
   }
+
+  Future<bool> _checkConnectivity() async {
+    try {
+      // Simple connectivity check - try to reach the API
+      await api.ping();
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
   
   // Sync all library data
   Future<void> syncFullLibrary() async {
@@ -33,14 +43,35 @@ class CacheService {
       // Fetch all artists
       final artists = await api.getArtists();
       await DatabaseHelper.insertArtists(artists);
-      
+
       // Fetch all albums
       final albums = await api.getAlbumList2(
         type: 'alphabeticalByName',
         size: 500,
       );
       await DatabaseHelper.insertAlbums(albums);
-      
+
+      // Cache songs for ALL albums to ensure offline browsing works
+      try {
+        if (kDebugMode) print('[CacheService] Caching songs for ${albums.length} albums');
+
+        for (final album in albums) {
+          try {
+            final result = await api.getAlbum(album.id);
+            final songs = result['songs'] as List<Song>?;
+            if (songs != null && songs.isNotEmpty) {
+              await DatabaseHelper.insertSongs(songs);
+            }
+            // Small delay to avoid rate limiting
+            await Future.delayed(const Duration(milliseconds: 100));
+          } catch (e) {
+            print('Error caching songs for album ${album.name}: $e');
+          }
+        }
+      } catch (e) {
+        print('Error caching album songs: $e');
+      }
+
       // Update sync metadata
       await DatabaseHelper.setSyncMetadata(
         'full_library',
@@ -72,58 +103,84 @@ class CacheService {
   }
   
   // Get cached data with fallback to API
-  Future<List<Artist>> getArtists({bool forceRefresh = false}) async {
+  Future<List<Artist>> getArtists({bool forceRefresh = false, bool allowNetworkFallback = true}) async {
     try {
       if (forceRefresh || await needsFullSync()) {
-        await syncFullLibrary();
+        if (allowNetworkFallback) {
+          await syncFullLibrary();
+        }
       }
-      
+
       final cached = await DatabaseHelper.getArtists();
       if (cached.isNotEmpty) {
         return cached;
       }
     } catch (e) {
-      print('Cache error, falling back to API: $e');
+      print('Cache error: $e');
     }
-    
-    // Fallback to API if cache is empty or failed
-    final artists = await api.getArtists();
-    try {
-      await DatabaseHelper.insertArtists(artists);
-    } catch (e) {
-      print('Could not cache artists: $e');
+
+    // Fallback to API if cache is empty or failed and network fallback is allowed
+    if (allowNetworkFallback) {
+      try {
+        final artists = await api.getArtists();
+        try {
+          await DatabaseHelper.insertArtists(artists);
+        } catch (e) {
+          print('Could not cache artists: $e');
+        }
+        return artists;
+      } catch (e) {
+        print('Network fallback failed for artists: $e');
+        // Return empty list instead of throwing when network fails
+        return [];
+      }
     }
-    return artists;
+
+    // Return empty list if no cached data and network fallback not allowed
+    return [];
   }
   
-  Future<List<Album>> getAlbums({bool forceRefresh = false}) async {
+  Future<List<Album>> getAlbums({bool forceRefresh = false, bool allowNetworkFallback = true}) async {
     try {
       if (forceRefresh || await needsFullSync()) {
-        await syncFullLibrary();
+        if (allowNetworkFallback) {
+          await syncFullLibrary();
+        }
       }
-      
+
       final cached = await DatabaseHelper.getAlbums();
       if (cached.isNotEmpty) {
         return cached;
       }
     } catch (e) {
-      print('Cache error, falling back to API: $e');
+      print('Cache error: $e');
     }
-    
-    // Fallback to API if cache is empty or failed
-    final albums = await api.getAlbumList2(
-      type: 'alphabeticalByName',
-      size: 500,
-    );
-    try {
-      await DatabaseHelper.insertAlbums(albums);
-    } catch (e) {
-      print('Could not cache albums: $e');
+
+    // Fallback to API if cache is empty or failed and network fallback is allowed
+    if (allowNetworkFallback) {
+      try {
+        final albums = await api.getAlbumList2(
+          type: 'alphabeticalByName',
+          size: 500,
+        );
+        try {
+          await DatabaseHelper.insertAlbums(albums);
+        } catch (e) {
+          print('Could not cache albums: $e');
+        }
+        return albums;
+      } catch (e) {
+        print('Network fallback failed for albums: $e');
+        // Return empty list instead of throwing when network fails
+        return [];
+      }
     }
-    return albums;
+
+    // Return empty list if no cached data and network fallback not allowed
+    return [];
   }
   
-  Future<List<Album>> getAlbumsByArtist(String artistId, {bool forceRefresh = false}) async {
+  Future<List<Album>> getAlbumsByArtist(String artistId, {bool forceRefresh = false, bool allowNetworkFallback = true}) async {
     if (forceRefresh) {
       // Fetch fresh data from API
       final result = await api.getArtist(artistId);
@@ -132,20 +189,31 @@ class CacheService {
         await DatabaseHelper.insertAlbums(albums);
       }
     }
-    
+
     final cached = await DatabaseHelper.getAlbumsByArtist(artistId);
     if (cached.isNotEmpty) {
       return cached;
     }
-    
-    // Fallback to API if cache is empty
-    final result = await api.getArtist(artistId);
-    final albums = result['albums'] as List<Album>? ?? [];
-    await DatabaseHelper.insertAlbums(albums);
-    return albums;
+
+    // Only fallback to API if allowed and we're not forcing refresh
+    if (allowNetworkFallback && !forceRefresh) {
+      try {
+        final result = await api.getArtist(artistId);
+        final albums = result['albums'] as List<Album>? ?? [];
+        await DatabaseHelper.insertAlbums(albums);
+        return albums;
+      } catch (e) {
+        print('Network fallback failed for artist albums: $e');
+        // Return empty list instead of throwing when network fails
+        return [];
+      }
+    }
+
+    // Return empty list if no cached data and network fallback not allowed
+    return [];
   }
   
-  Future<List<Song>> getSongsByAlbum(String albumId, {bool forceRefresh = false}) async {
+  Future<List<Song>> getSongsByAlbum(String albumId, {bool forceRefresh = false, bool allowNetworkFallback = true}) async {
     if (forceRefresh) {
       // Fetch fresh data from API
       final result = await api.getAlbum(albumId);
@@ -154,25 +222,53 @@ class CacheService {
         await DatabaseHelper.insertSongs(songs);
       }
     }
-    
+
     final cached = await DatabaseHelper.getSongsByAlbum(albumId);
     if (cached.isNotEmpty) {
       return cached;
     }
-    
-    // Fallback to API if cache is empty
-    final result = await api.getAlbum(albumId);
-    final songs = result['songs'] as List<Song>? ?? [];
-    await DatabaseHelper.insertSongs(songs);
-    return songs;
+
+    // Only fallback to API if allowed and we're not forcing refresh
+    if (allowNetworkFallback && !forceRefresh) {
+      try {
+        final result = await api.getAlbum(albumId);
+        final songs = result['songs'] as List<Song>? ?? [];
+        await DatabaseHelper.insertSongs(songs);
+        return songs;
+      } catch (e) {
+        print('Network fallback failed for album songs: $e');
+        // Return empty list instead of throwing when network fails
+        return [];
+      }
+    }
+
+    // Return empty list if no cached data and network fallback not allowed
+    return [];
   }
   
   Future<List<Album>> getRecentlyAdded({bool forceRefresh = false}) async {
+    // Check if we're offline
+    final hasConnectivity = await _checkConnectivity();
+
+    if (!hasConnectivity && !forceRefresh) {
+      // Offline - return cached recently added
+      try {
+        final cached = await DatabaseHelper.getAlbums();
+        // Sort by id descending as a proxy for recently added
+        cached.sort((a, b) => b.id.compareTo(a.id));
+        return cached.take(50).toList();
+      } catch (e) {
+        print('Error getting cached recently added: $e');
+        return [];
+      }
+    }
+
+    // Online - proceed with normal sync
     if (forceRefresh || await needsQuickSync()) {
       await syncRecentlyAdded();
     }
-    
-    // For recently added, always fetch from API to ensure freshness
+
+    // Fetch from API
     final albums = await api.getAlbumList2(
       type: 'newest',
       size: 50,
@@ -184,30 +280,23 @@ class CacheService {
   // Cover art caching
   Future<String?> getCachedCoverArt(String? coverArtId, {int size = 300}) async {
     if (coverArtId == null) {
-      if (kDebugMode) print('[CacheService] Cover art ID is null');
       return null;
     }
-    
-    if (kDebugMode) print('[CacheService] Getting cached cover art for ID: $coverArtId, size: $size');
-    
+
     // Check if we have a cached local path
     final cachedPath = await DatabaseHelper.getCoverArtLocalPath(coverArtId);
     if (cachedPath != null) {
       final file = File(cachedPath);
       if (await file.exists()) {
-        if (kDebugMode) print('[CacheService] Found cached cover art at: $cachedPath');
         return cachedPath;
-      } else {
-        if (kDebugMode) print('[CacheService] Cached path exists in DB but file not found: $cachedPath');
       }
     }
-    
+
     // Download and cache the cover art
     try {
       final url = api.getCoverArtUrl(coverArtId, size: size);
-      if (kDebugMode) print('[CacheService] Downloading cover art from: $url');
       final response = await http.get(Uri.parse(url));
-      
+
       if (response.statusCode == 200) {
         Directory appDir;
         if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
@@ -216,28 +305,17 @@ class CacheService {
           appDir = await getApplicationDocumentsDirectory();
         }
         final coverDir = Directory(path.join(appDir.path, 'covers'));
-        
-        if (kDebugMode) print('[CacheService] Cover directory: ${coverDir.path}');
-        
+
         if (!await coverDir.exists()) {
-          if (kDebugMode) print('[CacheService] Creating cover directory...');
           await coverDir.create(recursive: true);
         }
-        
+
         final fileName = '${coverArtId}_$size.jpg';
         final filePath = path.join(coverDir.path, fileName);
         final file = File(filePath);
-        
-        if (kDebugMode) print('[CacheService] Saving cover art to: $filePath');
+
         await file.writeAsBytes(response.bodyBytes);
-        
-        // Verify file was written
-        if (await file.exists()) {
-          if (kDebugMode) print('[CacheService] Cover art saved successfully, size: ${response.bodyBytes.length} bytes');
-        } else {
-          if (kDebugMode) print('[CacheService] WARNING: File not found after writing!');
-        }
-        
+
         // Store in database
         await DatabaseHelper.setCoverArtCache(
           coverArtId,
@@ -245,15 +323,14 @@ class CacheService {
           filePath,
           response.bodyBytes.length,
         );
-        
+
         return filePath;
-      } else {
-        if (kDebugMode) print('[CacheService] Failed to download cover art, status: ${response.statusCode}');
       }
     } catch (e) {
+      // Only log errors, not successful operations
       if (kDebugMode) print('[CacheService] Error caching cover art: $e');
     }
-    
+
     return null;
   }
   

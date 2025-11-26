@@ -4,15 +4,22 @@ import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import '../models/song.dart';
 import '../services/navidrome_api.dart';
+import '../services/database_helper.dart';
+import '../providers/network_provider.dart';
 
 class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
   final AudioPlayer _player;
   NavidromeApi _api; // Made non-final to allow updates
+  final NetworkProvider? _networkProvider;
   List<Song> _queue = [];
   List<String?> _coverArtPaths = []; // Local paths to cached cover art
   int _currentIndex = 0;
-  
-  NhacAudioHandler(this._player, this._api) {
+
+  NhacAudioHandler(
+    this._player,
+    this._api, {
+    NetworkProvider? networkProvider,
+  }) : _networkProvider = networkProvider {
     _notifyAudioHandlerAboutPlaybackEvents();
     _listenForDurationChanges();
     _listenForCurrentSongIndexChanges();
@@ -25,7 +32,8 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
   void updateApi(NavidromeApi api) {
     _api = api;
   }
-  
+
+    
   // Method to update cover art paths for the queue
   Future<void> updateCoverArtPaths(List<String?> paths) async {
     _coverArtPaths = paths;
@@ -33,11 +41,11 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     // Update the current media item with cached art if available
     if (_currentIndex < _queue.length) {
       final song = _queue[_currentIndex];
-      final coverArtPath = _currentIndex < _coverArtPaths.length ? 
+      final coverArtPath = _currentIndex < _coverArtPaths.length ?
           _coverArtPaths[_currentIndex] : null;
-      final mediaItem = _createMediaItem(song, coverArtPath: coverArtPath);
+      final mediaItem = await _createMediaItem(song, coverArtPath: coverArtPath);
       this.mediaItem.add(mediaItem);
-      
+
       // Also update the queue with the updated media item
       final updatedQueue = queue.value.toList();
       if (_currentIndex < updatedQueue.length) {
@@ -153,91 +161,162 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     });
   }
   
-  MediaItem _createMediaItem(Song song, {String? coverArtPath}) {
+  Future<MediaItem> _createMediaItem(Song song, {String? coverArtPath}) async {
     Uri? artUri;
-    
-    // For Android notifications, prefer network URLs over local files
-    // as MediaSession may not have access to local files
-    if (song.coverArt != null && _api != null) {
-      final url = _api.getCoverArtUrl(song.coverArt!, size: 600);
-      artUri = Uri.parse(url);
-    } else if (coverArtPath != null) {
-      // Use local file as fallback
+
+    // Always try cached cover art first, regardless of online status
+    if (song.coverArt != null) {
+      final cachedPath = await DatabaseHelper.getCoverArtLocalPath(song.coverArt!);
+      if (cachedPath != null) {
+        final file = File(cachedPath);
+        if (file.existsSync()) {
+          artUri = Uri.file(cachedPath);
+        }
+      }
+    }
+
+    // Only try network if online and no cached art
+    if (artUri == null && song.coverArt != null && _api != null) {
+      final isOffline = _networkProvider?.isOffline ?? false;
+      if (!isOffline) {
+        final url = _api.getCoverArtUrl(song.coverArt!, size: 600);
+        artUri = Uri.parse(url);
+      }
+    }
+
+    // Final fallback to provided coverArtPath
+    if (artUri == null && coverArtPath != null) {
       final file = File(coverArtPath);
       if (file.existsSync()) {
         artUri = Uri.file(coverArtPath);
       }
     }
-    
-    final mediaItem = MediaItem(
+
+    return MediaItem(
       id: song.id,
       title: song.title,
       artist: song.artist ?? 'Unknown Artist',
       album: song.album,
-      duration: song.duration != null 
-          ? Duration(seconds: song.duration!) 
+      duration: song.duration != null
+          ? Duration(seconds: song.duration!)
           : null,
       artUri: artUri,
     );
-    
-    
-    return mediaItem;
   }
   
   Future<void> updateQueueFromSongs(List<Song> songs, {
     int startIndex = 0,
     List<String?>? coverArtPaths,
+    NetworkProvider? networkProvider,
   }) async {
     if (kDebugMode) print('[AudioHandler] updateQueueFromSongs() - received ${songs.length} songs, startIndex: $startIndex');
     if (songs.isNotEmpty && startIndex < songs.length) {
       if (kDebugMode) print('[AudioHandler] Starting with song: ${songs[startIndex].title} (track ${songs[startIndex].track})');
     }
-    
+
     // Simple: always replace the queue and set the index
     _queue = songs;
     _currentIndex = startIndex;
-    
+
     if (kDebugMode) print('[AudioHandler] Queue updated - ${_queue.length} songs, currentIndex: $_currentIndex');
-    
+
     // Store cover art paths if provided
     if (coverArtPaths != null) {
       _coverArtPaths = coverArtPaths;
     } else {
       _coverArtPaths = List.filled(songs.length, null);
     }
-    
-    // Convert songs to MediaItems with cached art paths
-    final mediaItems = <MediaItem>[];
-    for (int i = 0; i < songs.length; i++) {
-      final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
-      mediaItems.add(_createMediaItem(songs[i], coverArtPath: coverArtPath));
-    }
-    
-    // Update the queue
-    queue.add(mediaItems);
-    
-    // Create audio sources for all songs
+
+    // Check offline status once
+    final isOffline = networkProvider?.isOffline ?? _networkProvider?.isOffline ?? false;
+
+    // Create audio sources and media items, tracking playable songs
     final audioSources = <AudioSource>[];
+    final mediaItems = <MediaItem>[];
+    final playableSongs = <Song>[];
+    int adjustedStartIndex = 0;
+
     for (int i = 0; i < songs.length; i++) {
-      final url = _api.getStreamUrl(songs[i].id);
+      final song = songs[i];
       final coverArtPath = i < _coverArtPaths.length ? _coverArtPaths[i] : null;
-      audioSources.add(AudioSource.uri(
-        Uri.parse(url),
-        tag: _createMediaItem(songs[i], coverArtPath: coverArtPath),
-      ));
+
+      // Check for cached audio file in songs table
+      String? audioSourcePath;
+
+      final songCacheInfo = await DatabaseHelper.getSongCacheInfo(song.id);
+      if (songCacheInfo != null && songCacheInfo['cached_path'] != null) {
+        final cachedPath = songCacheInfo['cached_path'] as String;
+        final cachedFile = File(cachedPath);
+        if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+          audioSourcePath = cachedPath;
+          if (i == startIndex) {
+            if (kDebugMode) print('[AudioHandler] Using downloaded file for ${song.title}');
+          }
+        }
+      }
+
+      // Fall back to streaming if not cached - but ONLY if online
+      if (audioSourcePath == null) {
+        if (isOffline) {
+          // Offline and no cached file - skip this song
+          if (kDebugMode) print('[AudioHandler] Skipping ${song.title} - offline and not cached');
+          continue;
+        }
+        final shouldTranscode = networkProvider != null &&
+                               !networkProvider!.isOnWifi &&
+                               !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
+        audioSourcePath = _api.getStreamUrl(song.id, transcode: shouldTranscode);
+        if (i == startIndex) {
+          if (kDebugMode) print('[AudioHandler] Using stream for ${song.title}');
+        }
+      }
+
+      // Track if this is our start song
+      if (i == startIndex) {
+        adjustedStartIndex = audioSources.length;
+      }
+
+      // Create media item for this playable song
+      final mediaItem = await _createMediaItem(song, coverArtPath: coverArtPath);
+      mediaItems.add(mediaItem);
+      playableSongs.add(song);
+
+      // Create the appropriate audio source
+      if (audioSourcePath.startsWith('/')) {
+        // Local file path
+        audioSources.add(AudioSource.uri(
+          Uri.file(audioSourcePath),
+          tag: mediaItem,
+        ));
+      } else {
+        // Stream URL
+        audioSources.add(AudioSource.uri(
+          Uri.parse(audioSourcePath),
+          tag: mediaItem,
+        ));
+      }
     }
-    
+
+    // Update internal queue to only playable songs
+    _queue = playableSongs;
+    _currentIndex = adjustedStartIndex;
+
+    // Update the queue with playable media items
+    queue.add(mediaItems);
+
     // Use setAudioSources for all platforms
     if (audioSources.isNotEmpty) {
       await _player.setAudioSources(
         audioSources,
-        initialIndex: startIndex,
+        initialIndex: adjustedStartIndex,
       );
-    }
-    
-    // Update the current media item
-    if (songs.isNotEmpty && startIndex < mediaItems.length) {
-      mediaItem.add(mediaItems[startIndex]);
+
+      // Update the current media item
+      if (adjustedStartIndex < mediaItems.length) {
+        mediaItem.add(mediaItems[adjustedStartIndex]);
+      }
+    } else if (isOffline) {
+      if (kDebugMode) print('[AudioHandler] No playable songs available offline');
     }
   }
   
@@ -251,9 +330,9 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
   Future<void> updateCurrentSong(Song song) async {
     if (_currentIndex < _queue.length) {
       _queue[_currentIndex] = song;
-      final newMediaItem = _createMediaItem(song);
+      final newMediaItem = await _createMediaItem(song);
       mediaItem.add(newMediaItem);
-      
+
       // Update the queue with the new media item
       final newQueue = queue.value.toList();
       if (_currentIndex < newQueue.length) {

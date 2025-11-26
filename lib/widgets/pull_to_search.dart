@@ -13,18 +13,46 @@ class PullToSearch extends StatefulWidget {
     super.key,
     required this.child,
     required this.onSearchTriggered,
-    this.triggerThreshold = 80.0,
+    this.triggerThreshold = 60.0,
     this.maxStretchDistance = 240.0,
-    this.elasticity = 0.6,
+    this.elasticity = 1.5,
   });
 
   @override
   State<PullToSearch> createState() => _PullToSearchState();
 }
 
-class _PullToSearchState extends State<PullToSearch> {
+class _PullToSearchState extends State<PullToSearch>
+    with SingleTickerProviderStateMixin {
   double _dragOffset = 0.0;
+  double _accumulatedDrag = 0.0;
   bool _isSearchTriggered = false;
+  late AnimationController _resetController;
+  double _animationStartOffset = 0.0;
+
+  @override
+  void initState() {
+    super.initState();
+    _resetController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 300),
+    );
+    _resetController.addListener(_onAnimationTick);
+  }
+
+  @override
+  void dispose() {
+    _resetController.dispose();
+    super.dispose();
+  }
+
+  void _onAnimationTick() {
+    setState(() {
+      // Animate from start offset to 0 using easeOutCubic curve
+      final progress = Curves.easeOutCubic.transform(_resetController.value);
+      _dragOffset = _animationStartOffset * (1.0 - progress);
+    });
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -91,12 +119,16 @@ class _PullToSearchState extends State<PullToSearch> {
 
   bool _handleScrollNotification(ScrollNotification notification) {
     if (notification is OverscrollNotification && notification.overscroll < 0) {
-      // Use overscroll directly - this gives immediate elastic feedback
-      final dragDistance = -notification.overscroll;
+      // Stop any running reset animation when user drags again
+      if (_resetController.isAnimating) {
+        _resetController.stop();
+      }
 
-      setState(() {
-        _dragOffset = (dragDistance * 1.5).clamp(0.0, widget.maxStretchDistance);
-      });
+      // ACCUMULATE the drag distance instead of just using the last value
+      _accumulatedDrag += -notification.overscroll;
+      _dragOffset =
+          (_accumulatedDrag * widget.elasticity).clamp(0.0, widget.maxStretchDistance);
+      setState(() {});
 
       // Check if we should trigger search
       if (_dragOffset > widget.triggerThreshold && !_isSearchTriggered) {
@@ -104,13 +136,25 @@ class _PullToSearchState extends State<PullToSearch> {
         HapticFeedback.mediumImpact();
         widget.onSearchTriggered();
       }
-    } else if (notification is ScrollEndNotification || notification is UserScrollNotification) {
-      // Reset when scrolling ends or user scrolls in another direction
-      if (_dragOffset > 0) {
-        setState(() {
-          _dragOffset = 0.0;
-          _isSearchTriggered = false;
-        });
+    } else if (notification is ScrollUpdateNotification &&
+        notification.scrollDelta != null &&
+        notification.scrollDelta! > 0) {
+      // User is scrolling down (away from overscroll), reset accumulated drag
+      if (_accumulatedDrag > 0) {
+        _accumulatedDrag = 0.0;
+        if (_dragOffset > 0 && !_resetController.isAnimating) {
+          _animationStartOffset = _dragOffset;
+          _resetController.forward(from: 0.0);
+        }
+      }
+    } else if (notification is ScrollEndNotification ||
+        notification is UserScrollNotification) {
+      // Animate reset when scrolling ends
+      if (_dragOffset > 0 && !_resetController.isAnimating) {
+        _animationStartOffset = _dragOffset;
+        _isSearchTriggered = false;
+        _accumulatedDrag = 0.0;
+        _resetController.forward(from: 0.0);
       }
     }
 

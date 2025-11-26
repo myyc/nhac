@@ -1,3 +1,6 @@
+import 'dart:async';
+import 'dart:io';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
@@ -6,6 +9,8 @@ import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/cache_provider.dart';
 import '../providers/network_provider.dart';
+import '../services/album_download_service.dart';
+import '../services/database_helper.dart';
 import '../models/album.dart';
 import '../models/song.dart';
 import '../models/artist.dart';
@@ -15,6 +20,7 @@ import '../widgets/pull_to_search.dart';
 import 'artist_detail_screen.dart';
 import '../widgets/custom_window_frame.dart';
 import '../widgets/now_playing_bar.dart';
+import '../theme/app_theme.dart';
 import 'dart:io' show Platform;
 
 class AlbumDetailScreen extends StatefulWidget {
@@ -31,15 +37,58 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   List<Song>? _songs;
   bool _isLoading = true;
   String? _error;
+  AlbumDownloadProgress? _albumDownloadProgress;
+  int _downloadedCount = 0;
+  StreamSubscription<AlbumDownloadProgress>? _albumDownloadSubscription;
 
   @override
   void initState() {
     super.initState();
-    _loadAlbumDetails();
+    // Defer context-dependent initialization
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _loadAlbumDetails();
+      _subscribeToDownloadProgress();
+    });
+  }
+
+  void _subscribeToDownloadProgress() {
+    if (!mounted) return;
+    final albumDownloadService = context.read<AlbumDownloadService?>();
+    if (albumDownloadService == null) return;
+
+    // Subscribe to download progress stream
+    _albumDownloadSubscription?.cancel();
+    _albumDownloadSubscription = albumDownloadService.downloadProgress.listen((progress) {
+      if (mounted && progress.albumId == widget.album.id) {
+        setState(() {
+          _albumDownloadProgress = progress;
+        });
+
+        // Refresh song list on each progress update to show cached status
+        // This will update the green indicators as each song downloads
+        _refreshSongsFromDatabase();
+      }
+    });
+  }
+
+  /// Refresh just the songs from database without full reload
+  Future<void> _refreshSongsFromDatabase() async {
+    if (!mounted) return;
+    final songs = await DatabaseHelper.getSongsByAlbum(widget.album.id);
+    if (mounted && songs.isNotEmpty) {
+      setState(() {
+        _songs = songs;
+      });
+    }
   }
 
   Future<void> _loadAlbumDetails() async {
+    if (kDebugMode) {
+      print('[AlbumDetailScreen] Loading album details for: ${widget.album.name}');
+    }
     final cacheProvider = context.read<CacheProvider>();
+    final networkProvider = context.read<NetworkProvider>();
+    final albumDownloadService = context.read<AlbumDownloadService?>();
 
     setState(() {
       _isLoading = true;
@@ -47,18 +96,44 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     });
 
     try {
-      // Force refresh to get complete metadata including suffix and bitRate
+      // Always try cache first, never force refresh by default
+      final forceRefresh = false;
+      if (kDebugMode) {
+        print('[AlbumDetailScreen] Fetching songs from cache... (forceRefresh: $forceRefresh)');
+      }
       final songs = await cacheProvider.getSongsByAlbum(
         widget.album.id,
-        forceRefresh: true,
+        forceRefresh: forceRefresh,
       );
+      if (kDebugMode) {
+        print('[AlbumDetailScreen] Found ${songs.length} songs');
+      }
+
+      // Check for existing album download progress
+      final albumDownloadProgress = albumDownloadService != null
+          ? await albumDownloadService.getAlbumDownload(widget.album.id)
+          : null;
+
+      if (kDebugMode) {
+        if (albumDownloadProgress != null) {
+          print('[AlbumDetailScreen] Found existing download progress: ${albumDownloadProgress.status} (${albumDownloadProgress.progress}%)');
+        }
+      }
+
       if (mounted) {
         setState(() {
           _songs = songs;
           _isLoading = false;
+          _albumDownloadProgress = albumDownloadProgress;
         });
+        if (kDebugMode) {
+          print('[AlbumDetailScreen] UI updated successfully');
+        }
       }
     } catch (e) {
+      if (kDebugMode) {
+        print('[AlbumDetailScreen] Error loading album details: $e');
+      }
       if (mounted) {
         setState(() {
           _error = e.toString();
@@ -296,6 +371,83 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                     ' • ${_formatDuration(widget.album.duration)}',
                                     style: Theme.of(context).textTheme.bodyMedium,
                                   ),
+                                const Spacer(),
+                                Consumer<NetworkProvider>(
+                                  builder: (context, networkProvider, _) {
+                                    return Consumer<AlbumDownloadService?>(
+                                      builder: (context, albumDownloadService, _) {
+                                        if (albumDownloadService == null) {
+                                          return const SizedBox.shrink();
+                                        }
+                                        // Determine button state
+                                        final isDownloading = _albumDownloadProgress?.status == AlbumDownloadStatus.downloading;
+                                        final isPaused = _albumDownloadProgress?.status == AlbumDownloadStatus.paused;
+                                        final isCompleted = _albumDownloadProgress?.status == AlbumDownloadStatus.completed;
+                                        final progress = _albumDownloadProgress?.progress ?? 0;
+
+                                        // For now, consider album fully downloaded only if download completed
+                                        // User can trigger delete by pressing the delete button when download completes
+                                        final isFullyDownloaded = isCompleted;
+
+                                        Icon icon;
+                                        Color iconColor;
+                                        String tooltip;
+
+                                        if (isFullyDownloaded) {
+                                          icon = Icon(Icons.delete, color: Theme.of(context).colorScheme.primary, size: 20);
+                                          iconColor = Theme.of(context).colorScheme.primary;
+                                          tooltip = 'Remove from cache';
+                                        } else if (isDownloading) {
+                                          icon = Icon(Icons.pause, color: Theme.of(context).colorScheme.primary, size: 20);
+                                          iconColor = Theme.of(context).colorScheme.primary;
+                                          tooltip = 'Pause downloading (${progress}%)';
+                                        } else if (isPaused) {
+                                          icon = Icon(Icons.play_arrow, color: Theme.of(context).colorScheme.primary, size: 20);
+                                          iconColor = Theme.of(context).colorScheme.primary;
+                                          tooltip = 'Resume downloading (${progress}%)';
+                                        } else {
+                                          icon = Icon(Icons.download, color: Theme.of(context).colorScheme.onSurface, size: 20);
+                                          iconColor = Theme.of(context).colorScheme.onSurface;
+                                          tooltip = 'Download for offline';
+                                        }
+
+                                        return GestureDetector(
+                                          onTap: networkProvider.isOffline ? null : () => _handleDownloadButtonPress(false),
+                                          onLongPress: networkProvider.isOffline ? null : () => _handleDownloadButtonPress(true),
+                                          child: Stack(
+                                            alignment: Alignment.center,
+                                            children: [
+                                              // Progress indicator ring
+                                              if (isDownloading || isPaused)
+                                                SizedBox(
+                                                  width: 36,
+                                                  height: 36,
+                                                  child: CircularProgressIndicator(
+                                                    value: progress / 100,
+                                                    strokeWidth: 2.5,
+                                                    backgroundColor: Theme.of(context).colorScheme.onSurface.withOpacity(0.2),
+                                                    valueColor: AlwaysStoppedAnimation<Color>(
+                                                      Theme.of(context).colorScheme.primary,
+                                                    ),
+                                                  ),
+                                                ),
+                                              IconButton(
+                                                icon: icon,
+                                                onPressed: networkProvider.isOffline ? null : () => _handleDownloadButtonPress(false),
+                                                tooltip: tooltip,
+                                                style: IconButton.styleFrom(
+                                                  padding: const EdgeInsets.all(6),
+                                                  minimumSize: const Size(32, 32),
+                                                  shape: const CircleBorder(),
+                                                ),
+                                              ),
+                                            ],
+                                          ),
+                                        );
+                                      },
+                                    );
+                                  },
+                                ),
                               ],
                             ),
                           ],
@@ -380,10 +532,10 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                 final isCurrentSong = playerProvider.currentSong?.id == song.id;
                                 final isPlaying = isCurrentSong && playerProvider.isPlaying;
                                 final playingTrackColor = isCurrentSong ? _getPlayingTrackColor(context) : null;
-                                
+
                                 widgets.add(
                                   Container(
-                                    color: isCurrentSong 
+                                    color: isCurrentSong
                                         ? Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3)
                                         : null,
                                     child: ListTile(
@@ -408,11 +560,26 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                           fontWeight: isCurrentSong ? FontWeight.bold : null,
                                         ),
                                       ),
-                                      subtitle: Text(
-                                        song.artist ?? 'Unknown Artist',
-                                        style: TextStyle(
-                                          color: playingTrackColor?.withOpacity(0.8),
-                                        ),
+                                      subtitle: Row(
+                                        children: [
+                                          if (song.isCached) ...[
+                                            Icon(
+                                              Icons.check_circle,
+                                              size: 14,
+                                              color: Theme.of(context).colorScheme.primary,
+                                            ),
+                                            const SizedBox(width: 4),
+                                          ],
+                                          Expanded(
+                                            child: Text(
+                                              song.artist ?? 'Unknown Artist',
+                                              style: TextStyle(
+                                                color: playingTrackColor?.withOpacity(0.8),
+                                              ),
+                                              overflow: TextOverflow.ellipsis,
+                                            ),
+                                          ),
+                                        ],
                                       ),
                                       trailing: Row(
                                         mainAxisSize: MainAxisSize.min,
@@ -430,8 +597,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                                     Text(
                                                       song.suffix!.toUpperCase(),
                                                       style: TextStyle(
-                                                        color: playingTrackColor?.withOpacity(0.6) ?? 
-                                                               Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                        color: Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
                                                         fontSize: 11,
                                                         fontWeight: FontWeight.w500,
                                                       ),
@@ -463,9 +629,9 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                                         return Text(
                                                           text,
                                                           style: TextStyle(
-                                                            color: playingTrackColor?.withOpacity(0.6) ?? 
-                                                                   Theme.of(context).colorScheme.onSurface.withOpacity(0.5),
+                                                            color: Theme.of(context).colorScheme.onSurface.withOpacity(0.4),
                                                             fontSize: 10,
+                                                            fontWeight: FontWeight.w500,
                                                           ),
                                                         );
                                                       },
@@ -535,5 +701,172 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     }
     
     return scaffold;
+  }
+
+  Future<void> _handleDownloadButtonPress(bool isLongPress) async {
+    final albumDownloadService = context.read<AlbumDownloadService?>();
+    if (albumDownloadService == null) return;
+    final isDownloading = _albumDownloadProgress?.status == AlbumDownloadStatus.downloading;
+    final isPaused = _albumDownloadProgress?.status == AlbumDownloadStatus.paused;
+    final isCompleted = _albumDownloadProgress?.status == AlbumDownloadStatus.completed;
+    final isFullyDownloaded = isCompleted;
+
+    if (isFullyDownloaded) {
+      // Always show confirmation modal for delete
+      if (isLongPress || true) { // For downloaded albums, any press should show confirmation
+        await _showDeleteConfirmation();
+      }
+    } else if (isDownloading) {
+      if (isLongPress) {
+        // Long press while downloading = cancel
+        await _showCancelConfirmation();
+      } else {
+        // Short press while downloading = pause
+        await albumDownloadService.pauseDownload(_albumDownloadProgress!.id);
+      }
+    } else if (isPaused) {
+      if (isLongPress) {
+        // Long press while paused = cancel
+        await _showCancelConfirmation();
+      } else {
+        // Short press while paused = resume
+        await albumDownloadService.resumeDownload(_albumDownloadProgress!.id);
+      }
+    } else {
+      // Not downloaded yet - start download
+      await _startAlbumDownload();
+    }
+  }
+
+  Future<void> _startAlbumDownload() async {
+    if (_songs == null || _songs!.isEmpty) {
+      if (kDebugMode) {
+        print('[AlbumDetailScreen] Error: No songs found for album');
+      }
+      return;
+    }
+
+    if (kDebugMode) {
+      print('[AlbumDetailScreen] Starting download for album: ${widget.album.name}');
+    }
+
+    final albumDownloadService = context.read<AlbumDownloadService?>();
+    if (albumDownloadService == null) return;
+
+    // Start the download - subscription is already set up in initState
+    await albumDownloadService.downloadAlbum(widget.album, _songs!);
+    if (kDebugMode) {
+      print('[AlbumDetailScreen] Started download for album: ${widget.album.name}');
+    }
+  }
+
+  Future<void> _showDeleteConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Remove from cache'),
+        content: Text('Are you sure you want to remove "${widget.album.name}" from offline storage?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Remove'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await _deleteAlbumFromCache();
+    }
+  }
+
+  Future<void> _showCancelConfirmation() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Cancel download'),
+        content: Text('Are you sure you want to cancel the download for "${widget.album.name}"? This will delete any partially downloaded files.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('Keep downloading'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('Cancel download'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && _albumDownloadProgress != null) {
+      final albumDownloadService = context.read<AlbumDownloadService?>();
+      await albumDownloadService?.cancelDownload(_albumDownloadProgress!.id);
+      setState(() {
+        _albumDownloadProgress = null;
+      });
+    }
+  }
+
+  Future<void> _deleteAlbumFromCache() async {
+    if (kDebugMode) {
+      print('[AlbumDetailScreen] Removing album ${widget.album.name} from cache');
+    }
+
+    // Get all song IDs for this album
+    final songIds = _songs?.map((song) => song.id).toList() ?? [];
+
+    // Remove from audio cache and update song cache status
+    for (final songId in songIds) {
+      try {
+        // Get cached path and delete file
+        final cachedPath = await DatabaseHelper.getAnyAudioCachePath(songId);
+        if (cachedPath != null) {
+          final file = File(cachedPath);
+          if (await file.exists()) {
+            await file.delete();
+          }
+        }
+
+        // Remove from audio cache database
+        final db = await DatabaseHelper.database;
+        await db.delete('audio_cache', where: 'song_id = ?', whereArgs: [songId]);
+
+        // Update song cache status
+        await DatabaseHelper.updateSongCacheStatus(songId, false);
+      } catch (e) {
+        print('Error removing song $songId from cache: $e');
+      }
+    }
+
+    // Remove album download record entirely
+    if (_albumDownloadProgress != null) {
+      final downloadId = _albumDownloadProgress!.id;
+      final albumDownloadService = context.read<AlbumDownloadService?>();
+      await albumDownloadService?.cancelDownload(downloadId);
+      // Also delete the record from database to ensure clean state
+      await DatabaseHelper.deleteAlbumDownload(downloadId);
+    }
+
+    setState(() {
+      _albumDownloadProgress = null;
+    });
+
+    // Reload songs to update isCached status
+    await _loadAlbumDetails();
+
+    if (kDebugMode) {
+      print('[AlbumDetailScreen] Album removed from cache successfully');
+    }
+  }
+
+  @override
+  void dispose() {
+    _albumDownloadSubscription?.cancel();
+    super.dispose();
   }
 }
