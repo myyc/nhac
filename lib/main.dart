@@ -143,9 +143,20 @@ class NhacApp extends StatelessWidget {
                 LogicalKeySet(LogicalKeyboardKey.space): () {
                   // Only toggle play/pause if no text field is focused
                   final primaryFocus = FocusManager.instance.primaryFocus;
-                  if (primaryFocus != null && 
-                      primaryFocus.context != null && 
-                      primaryFocus.context!.widget is! EditableText) {
+                  if (primaryFocus == null || primaryFocus.context == null) {
+                    playerProvider.togglePlayPause();
+                    return;
+                  }
+                  // Check if any ancestor is a text input
+                  bool isTextInput = false;
+                  primaryFocus.context!.visitAncestorElements((element) {
+                    if (element.widget is EditableText || element.widget is TextField) {
+                      isTextInput = true;
+                      return false; // stop visiting
+                    }
+                    return true; // continue visiting
+                  });
+                  if (!isTextInput) {
                     playerProvider.togglePlayPause();
                   }
                 },

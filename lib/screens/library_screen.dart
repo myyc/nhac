@@ -96,9 +96,18 @@ class _LibraryScreenState extends State<LibraryScreen> {
         albumsByArtist.putIfAbsent(artist, () => []).add(album);
       }
 
-      // Sort albums within each artist by name (case-insensitive)
+      // Sort albums within each artist by year (oldest first), then by name
       for (final albumList in albumsByArtist.values) {
-        albumList.sort((a, b) => a.name.toLowerCase().compareTo(b.name.toLowerCase()));
+        albumList.sort((a, b) {
+          // Albums with year come before albums without year
+          if (a.year != null && b.year == null) return -1;
+          if (a.year == null && b.year != null) return 1;
+          if (a.year != null && b.year != null && a.year != b.year) {
+            return a.year!.compareTo(b.year!);
+          }
+          // Fall back to name if years are equal or both null
+          return a.name.toLowerCase().compareTo(b.name.toLowerCase());
+        });
       }
 
       // Sort artist names (case-insensitive)
@@ -218,7 +227,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
           allAlbums.addAll(_albumsByArtist![artist]!);
         }
 
-        // When offline, sort cached albums first, then alphabetically by artist
+        // When offline, sort cached albums first, then by artist and year
         if (isOffline) {
           allAlbums.sort((a, b) {
             final aCached = _cachedAlbumIds.contains(a.id);
@@ -226,9 +235,15 @@ class _LibraryScreenState extends State<LibraryScreen> {
             // Cached albums come first
             if (aCached && !bCached) return -1;
             if (!aCached && bCached) return 1;
-            // Within same cache status, sort alphabetically by artist then album
+            // Within same cache status, sort by artist then year
             final artistCompare = (a.artist ?? '').toLowerCase().compareTo((b.artist ?? '').toLowerCase());
             if (artistCompare != 0) return artistCompare;
+            // Sort by year within artist
+            if (a.year != null && b.year == null) return -1;
+            if (a.year == null && b.year != null) return 1;
+            if (a.year != null && b.year != null && a.year != b.year) {
+              return a.year!.compareTo(b.year!);
+            }
             return a.name.toLowerCase().compareTo(b.name.toLowerCase());
           });
         }

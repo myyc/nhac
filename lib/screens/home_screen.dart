@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
+import '../providers/player_provider.dart';
 import '../widgets/custom_window_frame.dart';
 import '../widgets/macos_window_frame.dart';
 import 'home_view.dart';
@@ -29,10 +30,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _isControlCharacter(String character) {
-    // Check if the character is a control character (non-printable)
+    // Check if the character is a control character (non-printable) or space
     final codeUnit = character.codeUnitAt(0);
     // Control characters are typically in the range 0x00-0x1F and 0x7F-0x9F
-    return codeUnit < 0x20 || (codeUnit >= 0x7F && codeUnit <= 0x9F);
+    // Also exclude space (0x20) - nothing useful starts with space
+    return codeUnit <= 0x20 || (codeUnit >= 0x7F && codeUnit <= 0x9F);
   }
 
   void _openSearch({String? initialQuery}) {
@@ -181,19 +183,33 @@ class _HomeScreenState extends State<HomeScreen> {
         onKey: (event) {
           if (event is RawKeyDownEvent) {
             final primaryFocus = FocusManager.instance.primaryFocus;
-            // Check if no text field is focused
-            if (primaryFocus == null || 
-                primaryFocus.context == null || 
-                primaryFocus.context!.widget is! EditableText) {
-              final key = event.logicalKey;
-              
-              // Handle character input for search
-              final character = event.character;
-              // Check if it's a printable character (not null and not a control character)
-              if (character != null && character.isNotEmpty && !_isControlCharacter(character)) {
-                // Use the actual character based on the current keyboard layout
-                _openSearch(initialQuery: character);
-              }
+            // Check if a text field is focused - if so, don't intercept keys
+            if (primaryFocus != null && primaryFocus.context != null) {
+              bool isTextInput = false;
+              primaryFocus.context!.visitAncestorElements((element) {
+                if (element.widget is EditableText || element.widget is TextField) {
+                  isTextInput = true;
+                  return false;
+                }
+                return true;
+              });
+              if (isTextInput) return;
+            }
+
+            final key = event.logicalKey;
+
+            // Space = play/pause
+            if (key == LogicalKeyboardKey.space) {
+              context.read<PlayerProvider>().togglePlayPause();
+              return;
+            }
+
+            // Handle character input for search
+            final character = event.character;
+            // Check if it's a printable character (not null and not a control character)
+            if (character != null && character.isNotEmpty && !_isControlCharacter(character)) {
+              // Use the actual character based on the current keyboard layout
+              _openSearch(initialQuery: character);
             }
           }
         },
