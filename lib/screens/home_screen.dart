@@ -183,25 +183,26 @@ class _HomeScreenState extends State<HomeScreen> {
         onKey: (event) {
           if (event is RawKeyDownEvent) {
             final primaryFocus = FocusManager.instance.primaryFocus;
-            // Check if no text field is focused
-            if (primaryFocus == null ||
-                primaryFocus.context == null ||
-                primaryFocus.context!.widget is! EditableText) {
-              final key = event.logicalKey;
+            // Check if a text field is focused - if so, don't intercept keys
+            final isTextFieldFocused = primaryFocus != null &&
+                primaryFocus.context != null &&
+                primaryFocus.context!.widget is EditableText;
+            if (isTextFieldFocused) return;
 
-              // Space = play/pause
-              if (key == LogicalKeyboardKey.space) {
-                context.read<PlayerProvider>().togglePlayPause();
-                return;
-              }
+            final key = event.logicalKey;
 
-              // Handle character input for search
-              final character = event.character;
-              // Check if it's a printable character (not null and not a control character)
-              if (character != null && character.isNotEmpty && !_isControlCharacter(character)) {
-                // Use the actual character based on the current keyboard layout
-                _openSearch(initialQuery: character);
-              }
+            // Space = play/pause
+            if (key == LogicalKeyboardKey.space) {
+              context.read<PlayerProvider>().togglePlayPause();
+              return;
+            }
+
+            // Handle character input for search
+            final character = event.character;
+            // Check if it's a printable character (not null and not a control character)
+            if (character != null && character.isNotEmpty && !_isControlCharacter(character)) {
+              // Use the actual character based on the current keyboard layout
+              _openSearch(initialQuery: character);
             }
           }
         },
