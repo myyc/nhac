@@ -32,8 +32,8 @@ class NotificationService {
       final isFlatpak = Platform.environment.containsKey('FLATPAK_ID');
 
       if (isFlatpak) {
-        // Use the notification icon from hicolor theme (installed by Flatpak)
-        _appIconPath = 'dev.myyc.nhac.Notification';
+        // Use symbolic icon name (following Telegram's pattern for separate notification icon)
+        _appIconPath = 'dev.myyc.nhac-symbolic';
       } else {
         // Use bundled asset for local development
         final execDir = path.dirname(Platform.resolvedExecutable);
