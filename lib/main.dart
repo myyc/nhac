@@ -19,6 +19,7 @@ import 'services/navidrome_api.dart';
 import 'services/album_download_service.dart';
 import 'services/activity_coordinator.dart';
 import 'services/audio_cache_manager.dart';
+import 'services/notification_service.dart';
 import 'dart:async';
 
 late BaseAudioHandler? audioHandler;
@@ -33,6 +34,8 @@ void main() async {
   // macOS uses the native just_audio implementation
   if (Platform.isLinux) {
     JustAudioMediaKit.ensureInitialized();
+    // Initialize notification service for track change notifications
+    await NotificationService().initialize();
   }
   
   // Initialize database
