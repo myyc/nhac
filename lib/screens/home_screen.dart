@@ -184,10 +184,17 @@ class _HomeScreenState extends State<HomeScreen> {
           if (event is RawKeyDownEvent) {
             final primaryFocus = FocusManager.instance.primaryFocus;
             // Check if a text field is focused - if so, don't intercept keys
-            final isTextFieldFocused = primaryFocus != null &&
-                primaryFocus.context != null &&
-                primaryFocus.context!.widget is EditableText;
-            if (isTextFieldFocused) return;
+            if (primaryFocus != null && primaryFocus.context != null) {
+              bool isTextInput = false;
+              primaryFocus.context!.visitAncestorElements((element) {
+                if (element.widget is EditableText || element.widget is TextField) {
+                  isTextInput = true;
+                  return false;
+                }
+                return true;
+              });
+              if (isTextInput) return;
+            }
 
             final key = event.logicalKey;
 
