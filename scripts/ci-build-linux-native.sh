@@ -28,11 +28,9 @@ fi
 
 echo "Linux build complete!"
 
-# Generate icons if needed
-if [ -f "generate_app_icons.py" ]; then
-    echo "Generating app icons..."
-    python3 generate_app_icons.py || true
-fi
+# Icons are pre-committed - skip regeneration in CI
+# The generate_app_icons.py script uses Inkscape-specific SVG features
+# that rsvg-convert doesn't render correctly
 
 # Build Flatpak if manifest exists and flatpak-builder is available
 if [ -f "dev.myyc.nhac.yaml" ] && command -v flatpak-builder &> /dev/null; then
@@ -41,8 +39,8 @@ if [ -f "dev.myyc.nhac.yaml" ] && command -v flatpak-builder &> /dev/null; then
     echo "==================================="
     
     # Ensure Flatpak runtime is installed
-    flatpak install --user -y flathub org.freedesktop.Platform//24.08 || true
-    flatpak install --user -y flathub org.freedesktop.Sdk//24.08 || true
+    flatpak install --user -y flathub org.freedesktop.Platform//25.08 || true
+    flatpak install --user -y flathub org.freedesktop.Sdk//25.08 || true
     
     # Build Flatpak (using cache if available)
     # First build creates the app

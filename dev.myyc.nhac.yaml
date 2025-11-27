@@ -1,6 +1,6 @@
 app-id: dev.myyc.nhac
 runtime: org.freedesktop.Platform
-runtime-version: "24.08"
+runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 command: nhac
 finish-args:
@@ -70,11 +70,11 @@ modules:
         url: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
         sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
       - type: file
-        url: https://files.pythonhosted.org/packages/f3/f0/89e7aadfb3749d0f52234a0c8c7867877876e0a20b60e2188e9850794c17/MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-        sha256: e17c96c14e19278594aa4841ec148115f9c7615a47382ecb6b82bd8fea3ab0c8
+        url: https://files.pythonhosted.org/packages/0c/91/96cf928db8236f1bfab6ce15ad070dfdd02ed88261c2afafd4b43575e9e9/MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+        sha256: 15ab75ef81add55874e7ab7055e9c397312385bd9ced94920f2802310c930396
     build-commands:
       - python3 -m venv /app/jinja2-venv
-      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . MarkupSafe-3.0.2-cp312-cp312-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
       - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . jinja2-3.1.6-py3-none-any.whl
 
   # libplacebo dependency for mpv
@@ -87,7 +87,7 @@ modules:
     build-options:
       env:
         PATH: "/app/jinja2-venv/bin:/usr/bin:/bin"
-        PYTHONPATH: "/app/jinja2-venv/lib/python3.12/site-packages"
+        PYTHONPATH: "/app/jinja2-venv/lib/python3.13/site-packages"
     config-opts:
       - -Dvulkan=disabled
       - -Dopengl=disabled
