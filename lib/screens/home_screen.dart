@@ -29,10 +29,11 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   bool _isControlCharacter(String character) {
-    // Check if the character is a control character (non-printable)
+    // Check if the character is a control character (non-printable) or space
     final codeUnit = character.codeUnitAt(0);
     // Control characters are typically in the range 0x00-0x1F and 0x7F-0x9F
-    return codeUnit < 0x20 || (codeUnit >= 0x7F && codeUnit <= 0x9F);
+    // Also exclude space (0x20) - nothing useful starts with space
+    return codeUnit <= 0x20 || (codeUnit >= 0x7F && codeUnit <= 0x9F);
   }
 
   void _openSearch({String? initialQuery}) {
