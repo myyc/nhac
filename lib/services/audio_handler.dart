@@ -5,6 +5,7 @@ import 'package:just_audio/just_audio.dart';
 import '../models/song.dart';
 import '../services/navidrome_api.dart';
 import '../services/database_helper.dart';
+import '../services/notification_service.dart';
 import '../providers/network_provider.dart';
 
 class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
@@ -14,6 +15,8 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
   List<Song> _queue = [];
   List<String?> _coverArtPaths = []; // Local paths to cached cover art
   int _currentIndex = 0;
+  bool _isInitialLoad = true; // Track if this is initial queue setup (for notifications)
+  int? _lastNotifiedIndex; // Track last notified index to avoid duplicate notifications
 
   NhacAudioHandler(
     this._player,
@@ -115,13 +118,41 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     _player.currentIndexStream.listen((index) {
       final playlist = queue.value;
       if (index == null || playlist.isEmpty) return;
-      
+
       if (_player.shuffleModeEnabled) {
         index = _player.shuffleIndices![index];
       }
       _currentIndex = index;
       mediaItem.add(playlist[index]);
+
+      // Show notification on track change (Linux only, skip initial load and duplicates)
+      if (!_isInitialLoad && index < _queue.length && index != _lastNotifiedIndex) {
+        _lastNotifiedIndex = index;
+        _showTrackNotification(_queue[index]);
+      }
     });
+  }
+
+  /// Show a native desktop notification for track changes (Linux only)
+  Future<void> _showTrackNotification(Song song) async {
+    if (!Platform.isLinux) return;
+
+    try {
+      // Get cached cover art path if available
+      String? albumArtPath;
+      if (song.coverArt != null) {
+        albumArtPath = await DatabaseHelper.getCoverArtLocalPath(song.coverArt!);
+      }
+
+      await NotificationService().showTrackNotification(
+        title: song.title,
+        artist: song.artist ?? 'Unknown Artist',
+        album: song.album ?? 'Unknown Album',
+        albumArtPath: albumArtPath,
+      );
+    } catch (e) {
+      // Silently ignore notification failures
+    }
   }
   
   void _listenForSequenceStateChanges() {
@@ -155,8 +186,21 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     // Handle track completion for auto-advance
     _player.processingStateStream.listen((state) {
       if (state == ProcessingState.completed) {
-        // Auto-advance to next track
-        skipToNext();
+        // Check if at last track
+        if (_currentIndex >= _queue.length - 1) {
+          // End of queue: pause and reset to start of album (first track)
+          _player.pause();
+          _player.seek(Duration.zero, index: 0);
+          _currentIndex = 0;
+          // Update media item to first track
+          final mediaItems = queue.value;
+          if (mediaItems.isNotEmpty) {
+            mediaItem.add(mediaItems[0]);
+          }
+        } else {
+          // Auto-advance to next track
+          skipToNext();
+        }
       }
     });
   }
@@ -315,6 +359,10 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
       if (adjustedStartIndex < mediaItems.length) {
         mediaItem.add(mediaItems[adjustedStartIndex]);
       }
+
+      // Mark initial load complete (enables notifications for subsequent track changes)
+      _isInitialLoad = false;
+      _lastNotifiedIndex = null; // Reset so first track change in new queue shows notification
     } else if (isOffline) {
       if (kDebugMode) print('[AudioHandler] No playable songs available offline');
     }

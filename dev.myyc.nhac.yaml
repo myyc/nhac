@@ -192,5 +192,11 @@ modules:
       - test -f linux/icons/dev.myyc.nhac-256.png && install -Dm644 linux/icons/dev.myyc.nhac-256.png /app/share/icons/hicolor/256x256/apps/dev.myyc.nhac.png || install -Dm644 linux/icons/nhac-256.png /app/share/icons/hicolor/256x256/apps/dev.myyc.nhac.png
       - test -f linux/icons/dev.myyc.nhac-512.png && install -Dm644 linux/icons/dev.myyc.nhac-512.png /app/share/icons/hicolor/512x512/apps/dev.myyc.nhac.png || install -Dm644 linux/icons/nhac-512.png /app/share/icons/hicolor/512x512/apps/dev.myyc.nhac.png
 
+      # Install notification icon (foreground only, for small sizes)
+      - install -Dm644 linux/icons/nhac-symbolic-16.png /app/share/icons/hicolor/16x16/apps/dev.myyc.nhac.Notification.png
+      - install -Dm644 linux/icons/nhac-symbolic-24.png /app/share/icons/hicolor/24x24/apps/dev.myyc.nhac.Notification.png
+      - install -Dm644 linux/icons/nhac-symbolic-32.png /app/share/icons/hicolor/32x32/apps/dev.myyc.nhac.Notification.png
+      - install -Dm644 linux/icons/nhac-symbolic-48.png /app/share/icons/hicolor/48x48/apps/dev.myyc.nhac.Notification.png
+
       # Install AppStream metadata
       - install -Dm644 linux/dev.myyc.nhac.metainfo.xml /app/share/metainfo/dev.myyc.nhac.metainfo.xml
