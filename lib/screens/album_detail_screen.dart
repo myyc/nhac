@@ -257,7 +257,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                               ? CachedCoverImage(
                                                   key: ValueKey('album_${widget.album.id}_${widget.album.coverArt}'),
                                                   coverArtId: widget.album.coverArt,
-                                                  size: 400,
+                                                  size: 600, // Higher res for HiDPI displays
                                                 )
                                               : Container(
                                                   color: Theme.of(context).colorScheme.surfaceVariant,
@@ -302,7 +302,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                                           ? CachedCoverImage(
                                               key: ValueKey('album_${widget.album.id}_${widget.album.coverArt}'),
                                               coverArtId: widget.album.coverArt,
-                                              size: 400,
+                                              size: 600, // Higher res for HiDPI displays
                                             )
                                           : Container(
                                               color: Theme.of(context).colorScheme.surfaceVariant,
