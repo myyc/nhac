@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
+import '../providers/auth_provider.dart';
 
 class CustomWindowFrame extends StatefulWidget {
   final Widget child;
@@ -49,8 +51,8 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
         setState(() => _isMenuOpen = false);
       }
       if (value == 'logout' && mounted) {
-        // Import and call logout from auth provider
-        Navigator.of(context).pushNamedAndRemoveUntil('/login', (route) => false);
+        // Logout via AuthProvider - AuthWrapper will show login screen
+        context.read<AuthProvider>().logout();
       }
     });
   }

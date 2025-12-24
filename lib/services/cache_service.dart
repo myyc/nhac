@@ -283,8 +283,11 @@ class CacheService {
       return null;
     }
 
-    // Check if we have a cached local path
-    final cachedPath = await DatabaseHelper.getCoverArtLocalPath(coverArtId);
+    // Use size-specific cache key to support multiple resolutions
+    final cacheKey = '${coverArtId}_$size';
+
+    // Check if we have a cached local path for this specific size
+    final cachedPath = await DatabaseHelper.getCoverArtLocalPath(cacheKey);
     if (cachedPath != null) {
       final file = File(cachedPath);
       if (await file.exists()) {
@@ -316,9 +319,9 @@ class CacheService {
 
         await file.writeAsBytes(response.bodyBytes);
 
-        // Store in database
+        // Store in database with size-specific key
         await DatabaseHelper.setCoverArtCache(
-          coverArtId,
+          cacheKey,
           url,
           filePath,
           response.bodyBytes.length,
