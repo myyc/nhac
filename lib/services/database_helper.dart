@@ -44,14 +44,17 @@ class DatabaseHelper {
       return _database!;
     } catch (e) {
       final errorStr = e.toString().toLowerCase();
-      
-      // Check if this is a corruption or persistent lock error
+
+      // Check if this is a corruption, schema mismatch, or persistent lock error
       if (errorStr.contains('database is locked') ||
           errorStr.contains('corrupt') ||
           errorStr.contains('malformed') ||
-          errorStr.contains('not a database')) {
-        
-        print('[DatabaseHelper] Database corruption detected: $e');
+          errorStr.contains('not a database') ||
+          errorStr.contains('no such table') ||
+          errorStr.contains('no such column') ||
+          errorStr.contains('table') && errorStr.contains('already exists')) {
+
+        print('[DatabaseHelper] Database error detected: $e');
         print('[DatabaseHelper] Attempting automatic recovery...');
         
         // Reset the database
@@ -978,9 +981,9 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
-    
+
     if (maps.isEmpty) return null;
-    
+
     // Update last accessed time
     await db.update(
       'cover_art_cache',
@@ -988,8 +991,29 @@ class DatabaseHelper {
       where: 'id = ?',
       whereArgs: [id],
     );
-    
+
     return maps.first['localPath'] as String?;
+  }
+
+  /// Get any cached cover art for a given coverArtId (finds any size variant)
+  static Future<String?> getAnyCachedCoverArt(String coverArtId) async {
+    final db = await database;
+    // Look for any cache entry starting with the coverArtId (keys are "${coverArtId}_${size}")
+    final maps = await db.query(
+      'cover_art_cache',
+      where: 'id LIKE ?',
+      whereArgs: ['${coverArtId}_%'],
+      orderBy: 'size DESC', // Prefer larger sizes
+      limit: 1,
+    );
+
+    if (maps.isEmpty) return null;
+
+    final localPath = maps.first['localPath'] as String?;
+    if (localPath != null && await File(localPath).exists()) {
+      return localPath;
+    }
+    return null;
   }
 
   // Clean up old cache entries

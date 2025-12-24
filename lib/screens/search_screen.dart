@@ -104,8 +104,13 @@ class _SearchScreenState extends State<SearchScreen> {
       }
 
       if (mounted) {
+        // Filter out artists with 0 albums (e.g., from featuring credits)
+        final artists = (results['artists'] as List<Artist>?)
+            ?.where((a) => a.albumCount != null && a.albumCount! > 0)
+            .toList();
+
         setState(() {
-          _artists = results['artists'];
+          _artists = artists;
           _albums = results['albums'];
           _songs = results['songs'];
           _isLoading = false;

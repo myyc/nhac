@@ -73,43 +73,66 @@ class NetworkProvider extends ChangeNotifier {
   Future<void> _initialize() async {
     debugPrint('[NetworkProvider] Initializing...');
 
-    // Check if running in Flatpak
+    // Check if running in Flatpak or other container without D-Bus access
     _isFlatpak = Platform.isLinux &&
                   (Platform.environment['FLATPAK_ID'] != null ||
-                   File('/.flatpak-info').existsSync());
-    debugPrint('[NetworkProvider] Running in Flatpak: $_isFlatpak');
+                   File('/.flatpak-info').existsSync() ||
+                   Platform.environment['container'] != null || // Toolbx/Podman
+                   !File('/var/run/dbus/system_bus_socket').existsSync());
+    debugPrint('[NetworkProvider] Running in container/no D-Bus: $_isFlatpak');
 
     // Check initial connectivity
     await _checkConnectivity();
 
-    // Listen for connectivity changes (may fail in Flatpak without system bus)
+    // Skip connectivity_plus stream in containers - it requires D-Bus
+    if (_isFlatpak) {
+      debugPrint('[NetworkProvider] Container detected - skipping connectivity_plus stream');
+      // Set up periodic internet check instead
+      _startPeriodicConnectivityCheck();
+      return;
+    }
+
+    // Listen for connectivity changes (may fail without system bus)
     try {
       debugPrint('[NetworkProvider] Setting up connectivity monitoring...');
       _connectivitySubscription = _connectivity.onConnectivityChanged.listen(
         _handleConnectivityChange,
         onError: (error) {
           debugPrint('[NetworkProvider] Connectivity monitoring error: $error');
-          // Assume online in Flatpak if monitoring fails
-          if (_isFlatpak) {
-            debugPrint('[NetworkProvider] Flatpak detected - assuming online');
-            _handleConnectivityChange([ConnectivityResult.wifi]);
-          }
         },
       );
       debugPrint('[NetworkProvider] Connectivity monitoring setup successfully');
     } catch (e) {
       debugPrint('[NetworkProvider] Failed to setup connectivity monitoring: $e');
-      // Assume online in Flatpak
-      if (_isFlatpak) {
-        debugPrint('[NetworkProvider] Flatpak detected - assuming online');
-        _currentNetworkType = NetworkType.wifi;
-        _isOffline = false;
-        notifyListeners();
-      }
+      _startPeriodicConnectivityCheck();
     }
+  }
+
+  void _startPeriodicConnectivityCheck() {
+    // Poll for connectivity every 30 seconds as fallback
+    Timer.periodic(const Duration(seconds: 30), (_) async {
+      final hasInternet = await _checkInternetAccess();
+      if (hasInternet && _isOffline) {
+        _handleConnectivityChange([ConnectivityResult.wifi]);
+      } else if (!hasInternet && !_isOffline) {
+        _handleConnectivityChange([ConnectivityResult.none]);
+      }
+    });
   }
   
   Future<void> _checkConnectivity() async {
+    // In containers without D-Bus, skip connectivity_plus and check directly
+    if (_isFlatpak) {
+      debugPrint('[NetworkProvider] Container detected - checking internet directly');
+      final hasInternet = await _checkInternetAccess();
+      if (hasInternet) {
+        _handleConnectivityChange([ConnectivityResult.wifi]);
+      } else {
+        _handleConnectivityChange([ConnectivityResult.none]);
+      }
+      return;
+    }
+
     try {
       debugPrint('[NetworkProvider] Checking connectivity...');
       final results = await _connectivity.checkConnectivity();
@@ -156,7 +179,15 @@ class NetworkProvider extends ChangeNotifier {
   /// Set the API instance for server health monitoring
   void setApi(NavidromeApi api) {
     _api = api;
-    _startServerHealthMonitoring();
+    // If we're online, assume server is reachable until proven otherwise
+    if (!_isOffline) {
+      _serverReachable = true;
+      _connectionState = ConnectionState.connected;
+      // Defer notifyListeners to avoid calling during build
+      Future.microtask(() => notifyListeners());
+    }
+    // Run immediate health check, then start periodic monitoring
+    _checkServerHealth().then((_) => _startServerHealthMonitoring());
   }
 
   void _startServerHealthMonitoring() {
@@ -195,26 +226,32 @@ class NetworkProvider extends ChangeNotifier {
       final reachable = await _api!.ping();
 
       if (reachable && !_serverReachable) {
-        // Server became reachable
         _serverReachable = true;
         _connectionState = ConnectionState.connected;
         _connectionEventController.add(ConnectionEvent.serverRestored);
+        _consecutiveFailures = 0;
         debugPrint('[NetworkProvider] Server restored');
         notifyListeners();
       } else if (!reachable && _serverReachable) {
-        // Server became unreachable
-        _serverReachable = false;
-        _connectionState = ConnectionState.degraded;
-        _connectionEventController.add(ConnectionEvent.serverUnreachable);
-        debugPrint('[NetworkProvider] Server unreachable');
-        notifyListeners();
-      } else if (reachable && !_serverReachable) {
-        // First successful connection
-        _serverReachable = true;
-        _connectionState = ConnectionState.connected;
+        // Require 2 consecutive failures before marking unreachable
+        _consecutiveFailures++;
+        if (_consecutiveFailures >= 2) {
+          _serverReachable = false;
+          _connectionState = ConnectionState.degraded;
+          _connectionEventController.add(ConnectionEvent.serverUnreachable);
+          debugPrint('[NetworkProvider] Server unreachable');
+          notifyListeners();
+        }
+      } else if (reachable) {
+        _consecutiveFailures = 0;
+        if (!_serverReachable) {
+          _serverReachable = true;
+          _connectionState = ConnectionState.connected;
+        }
       }
     } catch (e) {
-      if (_serverReachable) {
+      _consecutiveFailures++;
+      if (_serverReachable && _consecutiveFailures >= 2) {
         _serverReachable = false;
         _connectionState = ConnectionState.degraded;
         _connectionEventController.add(ConnectionEvent.serverUnreachable);

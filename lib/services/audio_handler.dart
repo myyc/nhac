@@ -138,10 +138,10 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
     if (!Platform.isLinux) return;
 
     try {
-      // Get cached cover art path if available
+      // Get cached cover art path if available (any size variant)
       String? albumArtPath;
       if (song.coverArt != null) {
-        albumArtPath = await DatabaseHelper.getCoverArtLocalPath(song.coverArt!);
+        albumArtPath = await DatabaseHelper.getAnyCachedCoverArt(song.coverArt!);
       }
 
       await NotificationService().showTrackNotification(
