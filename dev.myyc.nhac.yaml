@@ -67,17 +67,13 @@ modules:
       - type: archive
         url: https://github.com/haasn/libplacebo/archive/refs/tags/v7.351.0.tar.gz
         sha256: 716954501d9b76e6906fddda66febc5886493d0673dd265ec1e6e52f4e5cd7c6
-      - type: archive
-        url: https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.8.tar.gz
-        sha256: 44f06f9195427c7017f5028d0894f57eb216b0a8f7c4eda7ce883732aeb2d0fc
-        dest: 3rdparty/glad
     build-options:
       env:
         PATH: "/app/jinja2-venv/bin:/usr/bin:/bin"
         PYTHONPATH: "/app/jinja2-venv/lib/python3.13/site-packages"
     config-opts:
       - -Dvulkan=disabled
-      - -Dopengl=enabled
+      - -Dopengl=disabled
       - -Dd3d11=disabled
       - -Dlcms=disabled
       - -Ddemos=false
@@ -99,9 +95,6 @@ modules:
   # Build libmpv from source (audio only)
   - name: libmpv
     buildsystem: meson
-    build-options:
-      env:
-        PKG_CONFIG_PATH: "/app/lib/pkgconfig:/app/share/pkgconfig"
     sources:
       - type: archive
         url: https://github.com/mpv-player/mpv/archive/v0.40.0.tar.gz
