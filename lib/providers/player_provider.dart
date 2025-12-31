@@ -7,13 +7,14 @@ import 'dart:io';
 import '../models/song.dart';
 import '../services/navidrome_api.dart';
 import '../services/audio_cache_manager.dart';
-import '../services/audio_handler.dart';
 import '../services/cache_service.dart';
 import '../services/color_extraction_service.dart';
 import '../services/performance_config.dart';
 import '../services/database_helper.dart';
+import '../services/notification_service.dart';
 import '../providers/network_provider.dart';
 import '../services/activity_coordinator.dart';
+import '../audio/mpv/mpv_player.dart';
 import '../main.dart' as app_main;
 
 class PlayerProvider extends ChangeNotifier {
@@ -32,9 +33,18 @@ class PlayerProvider extends ChangeNotifier {
   StreamSubscription? _positionSubscription;
   StreamSubscription? _durationSubscription;
   StreamSubscription? _playbackEventSubscription;
+  // MpvPlayer stream subscriptions (Linux/Windows)
+  StreamSubscription? _mpvStateSubscription;
+  StreamSubscription? _mpvPositionSubscription;
+  StreamSubscription? _mpvDurationSubscription;
   DateTime? _lastPreloadCheck;
   DateTime? _lastPositionUpdate; // For throttling position updates
   bool _pendingNotification = false; // For batching notifications
+
+  /// Check if we should use MpvPlayer (Linux/Windows with mpv available)
+  bool get _useMpv => (Platform.isLinux || Platform.isWindows) &&
+                      app_main.globalMpvPlayer != null &&
+                      app_main.globalMpvPlayer!.isInitialized;
 
   // Connection event handling for playback recovery
   StreamSubscription<ConnectionEvent>? _connectionSubscription;
@@ -100,11 +110,18 @@ class PlayerProvider extends ChangeNotifier {
     _durationSubscription?.cancel();
     _playbackEventSubscription?.cancel();
     _mediaItemSubscription?.cancel();
+    // Cancel mpv subscriptions
+    _mpvStateSubscription?.cancel();
+    _mpvPositionSubscription?.cancel();
+    _mpvDurationSubscription?.cancel();
     _playerStateSubscription = null;
     _positionSubscription = null;
     _durationSubscription = null;
     _playbackEventSubscription = null;
     _mediaItemSubscription = null;
+    _mpvStateSubscription = null;
+    _mpvPositionSubscription = null;
+    _mpvDurationSubscription = null;
   }
 
   /// Get cached audio path from database, validating file exists
@@ -141,7 +158,13 @@ class PlayerProvider extends ChangeNotifier {
   void _initializePlayer() {
     // Cancel any existing subscriptions first
     _cancelStreamSubscriptions();
-    
+
+    // Use MpvPlayer on Linux/Windows if available
+    if (_useMpv) {
+      _initializeMpvPlayer();
+      return;
+    }
+
     // Add error handling for audio playback with recovery
     _playbackEventSubscription = _audioPlayer.playbackEventStream.listen(
       (event) {
@@ -157,7 +180,7 @@ class PlayerProvider extends ChangeNotifier {
         _handlePlaybackError(error);
       },
     );
-    
+
     _positionSubscription = _audioPlayer.positionStream.listen((position) {
       // Don't update position while restoring or buffering
       if (_isRestoring || _isBuffering) return;
@@ -190,14 +213,14 @@ class PlayerProvider extends ChangeNotifier {
         }
       }
     });
-    
+
     _durationSubscription = _audioPlayer.durationStream.listen((duration) {
       if (duration != null) {
         _duration = duration;
         _notifyListenersDebounced();
       }
     });
-    
+
     _playerStateSubscription = _audioPlayer.playerStateStream.listen((state) {
       // Track playing state separately from buffering
       final wasPlaying = _isPlaying;
@@ -239,6 +262,89 @@ class PlayerProvider extends ChangeNotifier {
     });
   }
 
+  /// Initialize MpvPlayer streams for Linux/Windows
+  void _initializeMpvPlayer() {
+    final mpv = app_main.globalMpvPlayer!;
+    if (kDebugMode) print('[PlayerProvider] Initializing MpvPlayer streams');
+
+    // Listen to mpv state changes
+    _mpvStateSubscription = mpv.stateStream.listen((state) {
+      final wasPlaying = _isPlaying;
+      final wasBuffering = _isBuffering;
+
+      _isPlaying = state == MpvPlayerState.playing;
+      _isBuffering = state == MpvPlayerState.loading;
+
+      // Report playing state to ActivityCoordinator
+      if (wasPlaying != _isPlaying) {
+        _activityCoordinator?.setPlayingState(_isPlaying);
+      }
+
+      // Detect playback failure
+      if (wasBuffering && state == MpvPlayerState.error) {
+        _lastError = 'Failed to play track. Check your connection or try again.';
+        if (kDebugMode) print('[PlayerProvider] MpvPlayer error detected');
+      }
+
+      // Clear error when ready
+      if (state == MpvPlayerState.ready || state == MpvPlayerState.playing) {
+        _lastError = null;
+      }
+
+      if (kDebugMode) {
+        print('[PlayerProvider] MpvPlayer state: $state, isPlaying=$_isPlaying, isBuffering=$_isBuffering');
+      }
+
+      // Handle track completion
+      if (state == MpvPlayerState.completed) {
+        next();
+      }
+
+      _notifyListenersDebounced();
+    });
+
+    // Listen to position updates
+    _mpvPositionSubscription = mpv.positionStream.listen((position) {
+      if (_isRestoring || _isBuffering) return;
+
+      if (_hasRestoredPosition || _isPlaying) {
+        _position = position;
+
+        if (_isPlaying) {
+          _checkPreloadNeeded();
+
+          final now = DateTime.now();
+          if (_lastPositionSave == null ||
+              now.difference(_lastPositionSave!).inSeconds >= 5) {
+            _savePlayerState();
+            _lastPositionSave = now;
+          }
+        }
+
+        final now = DateTime.now();
+        if (_lastPositionUpdate == null ||
+            now.difference(_lastPositionUpdate!) >= Duration(milliseconds: PerformanceConfig.positionUpdateInterval)) {
+          _lastPositionUpdate = now;
+          _notifyListenersDebounced();
+        }
+      }
+    });
+
+    // Listen to duration updates
+    _mpvDurationSubscription = mpv.durationStream.listen((duration) {
+      if (duration != null) {
+        _duration = duration;
+        _notifyListenersDebounced();
+      }
+    });
+
+    // Listen to errors
+    mpv.errorStream.listen((error) {
+      if (kDebugMode) print('[PlayerProvider] MpvPlayer error: $error');
+      _handlePlaybackError(error);
+    });
+  }
+
   void _notifyListenersDebounced() {
     // Cancel any existing timer
     _notificationTimer?.cancel();
@@ -251,6 +357,28 @@ class PlayerProvider extends ChangeNotifier {
     });
 
     _pendingNotification = true;
+  }
+
+  /// Show a native desktop notification for track changes (Linux only, used with MpvPlayer)
+  Future<void> _showTrackNotification(Song song) async {
+    if (!Platform.isLinux) return;
+
+    try {
+      // Get cached cover art path if available
+      String? albumArtPath;
+      if (song.coverArt != null) {
+        albumArtPath = await DatabaseHelper.getAnyCachedCoverArt(song.coverArt!);
+      }
+
+      await NotificationService().showTrackNotification(
+        title: song.title,
+        artist: song.artist ?? 'Unknown Artist',
+        album: song.album ?? 'Unknown Album',
+        albumArtPath: albumArtPath,
+      );
+    } catch (e) {
+      // Silently ignore notification failures
+    }
   }
 
   /// Set the ActivityCoordinator for reporting playing state
@@ -347,8 +475,59 @@ class PlayerProvider extends ChangeNotifier {
         // Extract colors from album art
         await _extractColorsFromCurrentSong();
         
-        // Update audio handler for Android/Linux media session with full queue
-        if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null) {
+        // Use MpvPlayer on Linux/Windows if available
+        if (_useMpv) {
+          // Check for cached audio file first
+          String? audioSource;
+          final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+          if (cachedPath != null) {
+            final cachedFile = File(cachedPath);
+            final fileExists = await cachedFile.exists();
+            final fileSize = fileExists ? await cachedFile.length() : 0;
+            if (fileExists && fileSize > 1000) {
+              audioSource = cachedPath;
+              _isPlayingOffline = true;
+              _canPlayCurrentOffline = true;
+            } else {
+              _canPlayCurrentOffline = false;
+            }
+          } else {
+            _canPlayCurrentOffline = false;
+          }
+
+          // Fall back to streaming if not cached
+          if (audioSource == null && !_networkProvider!.isOffline) {
+            audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: false, suffix: _currentSong!.suffix);
+            _isPlayingOffline = false;
+          } else if (audioSource == null && _networkProvider!.isOffline) {
+            _isPlayingOffline = false;
+            _canPlayCurrentOffline = false;
+            if (kDebugMode) print('[PlayerProvider] ✗ Offline and no cached file for ${_currentSong!.title} - CANNOT PLAY');
+            return;
+          }
+
+          if (audioSource != null) {
+            if (kDebugMode) print('[PlayerProvider] MpvPlayer restoring: $audioSource');
+            // Load paused (autoPlay: false)
+            await app_main.globalMpvPlayer!.load(audioSource, autoPlay: false);
+
+            // Seek to saved position
+            if (targetPosition.inMilliseconds > 0) {
+              if (kDebugMode) print('[PlayerProvider] Seeking to saved position: $targetPosition');
+              await app_main.globalMpvPlayer!.seek(targetPosition);
+              _position = targetPosition;
+            }
+          }
+          _hasRestoredPosition = true;
+        }
+        // On Linux/Windows without MpvPlayer, we can't play - just mark as restored
+        else if (Platform.isLinux || Platform.isWindows) {
+          if (kDebugMode) print('[PlayerProvider] ✗ MpvPlayer not available on ${Platform.operatingSystem} - cannot restore playback');
+          _hasRestoredPosition = true;
+          // Don't try to use just_audio on Linux/Windows - it won't work
+        }
+        // Update audio handler for Android media session with full queue
+        else if (Platform.isAndroid && app_main.actualAudioHandler != null) {
           await app_main.actualAudioHandler!.updateQueueFromSongs(
             _queue,  // Use the full queue, not just current song
             startIndex: _currentIndex,
@@ -356,7 +535,15 @@ class PlayerProvider extends ChangeNotifier {
             networkProvider: _networkProvider,
           );
           // The audio handler will handle playback through the shared player
-        } else {
+          // Seek to saved position after URL is loaded
+          if (targetPosition.inMilliseconds > 0) {
+            if (kDebugMode) print('[PlayerProvider] Seeking to saved position: $targetPosition');
+            await _audioPlayer.seek(targetPosition);
+            _position = targetPosition;
+          }
+          await _audioPlayer.pause();
+          _hasRestoredPosition = true;
+        } else if (!Platform.isLinux && !Platform.isWindows) {
           // Check for cached audio file first - works on all platforms when offline
           String? audioSource;
           final cachedPath = await _getCachedAudioPath(_currentSong!.id);
@@ -390,7 +577,7 @@ class PlayerProvider extends ChangeNotifier {
             if (kDebugMode) print('[PlayerProvider] ✗ Offline and no cached file for ${_currentSong!.title} - CANNOT PLAY');
             return;
           }
-          
+
           // Set the audio source (either local file or stream URL)
           if (audioSource != null) {
             if (audioSource.startsWith('/')) {
@@ -403,18 +590,18 @@ class PlayerProvider extends ChangeNotifier {
               await _audioPlayer.setUrl(audioSource);
             }
           }
+
+          // Seek to saved position after URL is loaded
+          if (targetPosition.inMilliseconds > 0) {
+            if (kDebugMode) print('[PlayerProvider] Seeking to saved position: $targetPosition');
+            await _audioPlayer.seek(targetPosition);
+            _position = targetPosition; // Ensure position is set correctly
+          }
+
+          // Make sure it's paused
+          await _audioPlayer.pause();
+          _hasRestoredPosition = true;
         }
-        
-        // Seek to saved position after URL is loaded
-        if (targetPosition.inMilliseconds > 0) {
-          if (kDebugMode) print('[PlayerProvider] Seeking to saved position: $targetPosition');
-          await _audioPlayer.seek(targetPosition);
-          _position = targetPosition; // Ensure position is set correctly
-        }
-        
-        // Make sure it's paused
-        await _audioPlayer.pause();
-        _hasRestoredPosition = true;
       } finally {
         _isRestoring = false;
       }
@@ -507,8 +694,55 @@ class PlayerProvider extends ChangeNotifier {
       });
     }
     
-    // Update audio handler for Android/Linux media session with current cached art
-    if ((Platform.isAndroid || Platform.isLinux) && app_main.actualAudioHandler != null) {
+    // Use MpvPlayer on Linux/Windows if available
+    if (_useMpv) {
+      // Get audio source for the current song
+      String? audioSource;
+      final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+      if (cachedPath != null) {
+        final cachedFile = File(cachedPath);
+        final fileExists = await cachedFile.exists();
+        final fileSize = fileExists ? await cachedFile.length() : 0;
+        if (fileExists && fileSize > 1000) {
+          audioSource = cachedPath;
+          _isPlayingOffline = true;
+          _canPlayCurrentOffline = true;
+        } else {
+          _canPlayCurrentOffline = false;
+        }
+      } else {
+        _canPlayCurrentOffline = false;
+      }
+
+      // Fall back to streaming if not cached
+      if (audioSource == null && !_networkProvider!.isOffline) {
+        // Desktop never transcodes
+        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: false, suffix: _currentSong!.suffix);
+        _isPlayingOffline = false;
+      } else if (audioSource == null && _networkProvider!.isOffline) {
+        _isPlayingOffline = false;
+        _canPlayCurrentOffline = false;
+        if (kDebugMode) print('[PlayerProvider] Offline and no cached file for ${_currentSong!.title}');
+        return;
+      }
+
+      if (audioSource != null) {
+        if (kDebugMode) print('[PlayerProvider] MpvPlayer loading: $audioSource');
+        await app_main.globalMpvPlayer!.load(audioSource);
+
+        // Show notification for track change on Linux
+        if (Platform.isLinux) {
+          _showTrackNotification(_currentSong!);
+        }
+      }
+    }
+    // On Linux/Windows without MpvPlayer, we can't play
+    else if (Platform.isLinux || Platform.isWindows) {
+      if (kDebugMode) print('[PlayerProvider] ✗ MpvPlayer not available on ${Platform.operatingSystem} - cannot play');
+      return;
+    }
+    // Update audio handler for Android media session with current cached art
+    else if (Platform.isAndroid && app_main.actualAudioHandler != null) {
       await app_main.actualAudioHandler!.updateQueueFromSongs(
         songs,
         startIndex: startIndex,
@@ -516,7 +750,8 @@ class PlayerProvider extends ChangeNotifier {
         networkProvider: _networkProvider,
       );
       // The audio handler will set up the playlist in the shared player
-    } else {
+      await _audioPlayer.play();
+    } else if (!Platform.isLinux && !Platform.isWindows) {
       if (_useGaplessPlayback && songs.length > 1) {
         // Use gapless playback for queues with multiple songs
         await _setupGaplessPlayback(startIndex);
@@ -553,7 +788,7 @@ class PlayerProvider extends ChangeNotifier {
           if (kDebugMode) print('[PlayerProvider] Offline and no cached file for ${_currentSong!.title}');
           return;
         }
-        
+
         // Stop any current playback first
         await _audioPlayer.stop();
 
@@ -568,10 +803,8 @@ class PlayerProvider extends ChangeNotifier {
           }
         }
       }
+      await _audioPlayer.play();
     }
-    
-    // Always use the shared player for playback
-    await _audioPlayer.play();
     
     // Pre-load next cover art
     _preloadNextCoverArt();
@@ -598,11 +831,19 @@ class PlayerProvider extends ChangeNotifier {
       return;
     }
 
-    await _audioPlayer.play();
+    if (_useMpv) {
+      await app_main.globalMpvPlayer!.play();
+    } else {
+      await _audioPlayer.play();
+    }
   }
 
   Future<void> pause() async {
-    await _audioPlayer.pause();
+    if (_useMpv) {
+      await app_main.globalMpvPlayer!.pause();
+    } else {
+      await _audioPlayer.pause();
+    }
     _savePlayerState();
   }
 
@@ -622,14 +863,63 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> next() async {
     if (_queue.isEmpty || _api == null) return;
-    
-    // Always use the audio handler for navigation on Android/Linux
-    if ((Platform.isAndroid || Platform.isLinux) && app_main.audioHandler != null) {
+
+    // Use MpvPlayer on Linux/Windows if available
+    if (_useMpv) {
+      if (_currentIndex < _queue.length - 1) {
+        _currentIndex++;
+        _currentSong = _queue[_currentIndex];
+        _position = Duration.zero;
+        _hasRestoredPosition = true;
+        _isRestoring = false;
+
+        await _cacheCoverArt(_currentSong!);
+        await _extractColorsFromCurrentSong();
+
+        // Get audio source
+        String? audioSource;
+        final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+        if (cachedPath != null) {
+          final cachedFile = File(cachedPath);
+          if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+            audioSource = cachedPath;
+            _isPlayingOffline = true;
+            _canPlayCurrentOffline = true;
+          } else {
+            _canPlayCurrentOffline = false;
+          }
+        } else {
+          _canPlayCurrentOffline = false;
+        }
+
+        if (audioSource == null && !_networkProvider!.isOffline) {
+          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: false, suffix: _currentSong!.suffix);
+          _isPlayingOffline = false;
+        } else if (audioSource == null && _networkProvider!.isOffline) {
+          _isPlayingOffline = false;
+          _canPlayCurrentOffline = false;
+          if (kDebugMode) print('[PlayerProvider] Offline and no cached file for ${_currentSong!.title}');
+          return;
+        }
+
+        if (audioSource != null) {
+          await app_main.globalMpvPlayer!.load(audioSource);
+          if (Platform.isLinux) _showTrackNotification(_currentSong!);
+        }
+
+        notifyListeners();
+        _savePlayerState();
+      }
+      return;
+    }
+
+    // Use the audio handler for navigation on Android
+    if (Platform.isAndroid && app_main.audioHandler != null) {
       await app_main.audioHandler!.skipToNext();
       // The handler will update everything via the mediaItem listener
       return;
     }
-    
+
     if (_playlist != null && _useGaplessPlayback) {
       // Gapless mode - just seek to next in playlist
       if (_audioPlayer.hasNext) {
@@ -727,14 +1017,76 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> previous() async {
     if (_queue.isEmpty || _api == null) return;
-    
-    // Always use the audio handler for navigation on Android/Linux
-    if ((Platform.isAndroid || Platform.isLinux) && app_main.audioHandler != null) {
+
+    // Use MpvPlayer on Linux/Windows if available
+    if (_useMpv) {
+      // If more than 3 seconds in, restart current track
+      if (_position.inSeconds >= 3) {
+        await app_main.globalMpvPlayer!.seek(Duration.zero);
+        _position = Duration.zero;
+        notifyListeners();
+        return;
+      }
+
+      if (_currentIndex > 0) {
+        _currentIndex--;
+        _currentSong = _queue[_currentIndex];
+        _position = Duration.zero;
+        _hasRestoredPosition = true;
+        _isRestoring = false;
+
+        await _cacheCoverArt(_currentSong!);
+        await _extractColorsFromCurrentSong();
+
+        // Get audio source
+        String? audioSource;
+        final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+        if (cachedPath != null) {
+          final cachedFile = File(cachedPath);
+          if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+            audioSource = cachedPath;
+            _isPlayingOffline = true;
+            _canPlayCurrentOffline = true;
+          } else {
+            _canPlayCurrentOffline = false;
+          }
+        } else {
+          _canPlayCurrentOffline = false;
+        }
+
+        if (audioSource == null && !_networkProvider!.isOffline) {
+          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: false, suffix: _currentSong!.suffix);
+          _isPlayingOffline = false;
+        } else if (audioSource == null && _networkProvider!.isOffline) {
+          _isPlayingOffline = false;
+          _canPlayCurrentOffline = false;
+          if (kDebugMode) print('[PlayerProvider] Offline and no cached file for ${_currentSong!.title}');
+          return;
+        }
+
+        if (audioSource != null) {
+          await app_main.globalMpvPlayer!.load(audioSource);
+          if (Platform.isLinux) _showTrackNotification(_currentSong!);
+        }
+
+        notifyListeners();
+        _savePlayerState();
+      } else {
+        // At first track, restart
+        await app_main.globalMpvPlayer!.seek(Duration.zero);
+        _position = Duration.zero;
+        notifyListeners();
+      }
+      return;
+    }
+
+    // Use the audio handler for navigation on Android
+    if (Platform.isAndroid && app_main.audioHandler != null) {
       await app_main.audioHandler!.skipToPrevious();
       // The handler will update everything via the mediaItem listener
       return;
     }
-    
+
     if (_playlist != null && _useGaplessPlayback) {
       // Gapless mode - seek to previous in playlist
       if (_audioPlayer.hasPrevious) {
@@ -804,7 +1156,11 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> seek(Duration position) async {
-    await _audioPlayer.seek(position);
+    if (_useMpv) {
+      await app_main.globalMpvPlayer!.seek(position);
+    } else {
+      await _audioPlayer.seek(position);
+    }
     _position = position;
     notifyListeners();
     _savePlayerState();
@@ -812,7 +1168,11 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> setVolume(double volume) async {
     _volume = volume.clamp(0.0, 1.0);
-    await _audioPlayer.setVolume(_volume);
+    if (_useMpv) {
+      await app_main.globalMpvPlayer!.setVolume(_volume);
+    } else {
+      await _audioPlayer.setVolume(_volume);
+    }
     notifyListeners();
     _savePlayerState();
   }
@@ -1318,7 +1678,59 @@ class PlayerProvider extends ChangeNotifier {
           '[PlayerProvider] Recovering playback for ${_currentSong!.title} at $savedPosition');
     }
 
-    // Try cached file first
+    // Use MpvPlayer on Linux/Windows
+    if (_useMpv) {
+      // Try cached file first
+      String? audioSource;
+      final cachedPath = await _getCachedAudioPath(_currentSong!.id);
+      if (cachedPath != null) {
+        final cachedFile = File(cachedPath);
+        if (await cachedFile.exists() && await cachedFile.length() > 1000) {
+          audioSource = cachedPath;
+          _isPlayingOffline = true;
+          _canPlayCurrentOffline = true;
+        }
+      }
+
+      // Try streaming if online and no cached file
+      if (audioSource == null && !(_networkProvider?.isOffline ?? true)) {
+        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: false, suffix: _currentSong!.suffix);
+        _isPlayingOffline = false;
+      }
+
+      if (audioSource != null) {
+        try {
+          await app_main.globalMpvPlayer!.load(audioSource, autoPlay: wasPlaying);
+          if (savedPosition.inMilliseconds > 0) {
+            await app_main.globalMpvPlayer!.seek(savedPosition);
+          }
+          if (kDebugMode) {
+            print('[PlayerProvider] Recovery: Using MpvPlayer');
+          }
+          notifyListeners();
+          return;
+        } catch (e) {
+          if (kDebugMode) {
+            print('[PlayerProvider] MpvPlayer recovery failed: $e');
+          }
+        }
+      }
+
+      if (kDebugMode) {
+        print('[PlayerProvider] Recovery failed, no options left');
+      }
+      return;
+    }
+
+    // On Linux/Windows without MpvPlayer, we can't recover
+    if (Platform.isLinux || Platform.isWindows) {
+      if (kDebugMode) {
+        print('[PlayerProvider] Recovery failed - MpvPlayer not available');
+      }
+      return;
+    }
+
+    // Try cached file first (for other platforms using just_audio)
     final cachedPath = await _getCachedAudioPath(_currentSong!.id);
     if (cachedPath != null) {
       final cachedFile = File(cachedPath);

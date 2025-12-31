@@ -3,9 +3,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:bitsdojo_window/bitsdojo_window.dart';
-import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
+import 'audio/mpv/mpv_player.dart';
 import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/auth_provider.dart';
@@ -27,6 +27,7 @@ import 'dart:async';
 late BaseAudioHandler? audioHandler;
 late NhacAudioHandler? actualAudioHandler;
 late AudioPlayer globalAudioPlayer;
+MpvPlayer? globalMpvPlayer; // Used on Linux/Windows instead of just_audio
 bool _isCleanedUp = false;
 
 /// Run migrations that must happen before providers are created
@@ -92,15 +93,27 @@ void main() async {
   // Run migrations BEFORE providers are created
   await _runEarlyMigrations();
 
-  // Initialize just_audio with media_kit backend for Linux only
-  // macOS uses the native just_audio implementation
-  if (Platform.isLinux) {
-    JustAudioMediaKit.ensureInitialized();
-    // Initialize notification service for track change notifications
-    await NotificationService().initialize();
+  // On Linux/Windows, use our custom MpvPlayer instead of just_audio + media_kit
+  // This avoids the OSC property issue with audio-only mpv builds
+  if (Platform.isLinux || Platform.isWindows) {
+    print('[Main] Initializing MpvPlayer for ${Platform.operatingSystem}...');
+    globalMpvPlayer = MpvPlayer();
+    final initialized = await globalMpvPlayer!.initialize();
+    if (initialized) {
+      print('[Main] MpvPlayer initialized successfully');
+    } else {
+      print('[Main] MpvPlayer initialization failed, falling back to just_audio');
+      globalMpvPlayer = null;
+    }
+
+    // Initialize notification service for track change notifications (Linux only)
+    if (Platform.isLinux) {
+      await NotificationService().initialize();
+    }
   }
-  
-  // Create a single AudioPlayer instance to be shared
+
+  // Create a just_audio player for platforms that don't use mpv
+  // (or as fallback if mpv init failed)
   globalAudioPlayer = AudioPlayer();
   
   // Initialize audio service for Android and Linux
