@@ -44,7 +44,7 @@ if [ -f "dev.myyc.nhac.yaml" ] && command -v flatpak-builder &> /dev/null; then
     
     # Build Flatpak (using cache if available)
     # First build creates the app
-    flatpak-builder --ccache --keep-build-dirs --repo=repo build-dir dev.myyc.nhac.yaml
+    flatpak-builder --force-clean --ccache --repo=repo build-dir dev.myyc.nhac.yaml
     
     # Build single-file bundle
     flatpak build-bundle repo nhac.flatpak dev.myyc.nhac
