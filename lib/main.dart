@@ -6,6 +6,8 @@ import 'package:bitsdojo_window/bitsdojo_window.dart';
 import 'package:just_audio_media_kit/just_audio_media_kit.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'providers/auth_provider.dart';
 import 'providers/player_provider.dart';
 import 'providers/cache_provider.dart';
@@ -27,22 +29,75 @@ late NhacAudioHandler? actualAudioHandler;
 late AudioPlayer globalAudioPlayer;
 bool _isCleanedUp = false;
 
+/// Run migrations that must happen before providers are created
+Future<void> _runEarlyMigrations() async {
+  const migrationKey = 'cache_migration_v3_clear_all';
+
+  try {
+    final migrationDone = await DatabaseHelper.getSyncMetadata(migrationKey);
+    if (migrationDone != null) {
+      return; // Already migrated
+    }
+
+    print('[Main] Running early migration (clearing all stale data)...');
+
+    // Clear the image cache
+    try {
+      await DefaultCacheManager().emptyCache();
+      print('[Main] Image cache cleared successfully');
+    } catch (e) {
+      print('[Main] Could not clear image cache: $e');
+    }
+
+    // Clear persisted player state (may have stale song IDs)
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('player_current_song');
+      await prefs.remove('player_queue');
+      await prefs.remove('player_current_index');
+      await prefs.remove('player_position');
+      print('[Main] Player state cleared successfully');
+    } catch (e) {
+      print('[Main] Could not clear player state: $e');
+    }
+
+    // Clear all database cache (stale song/album/artist IDs)
+    try {
+      await DatabaseHelper.clearAllCache();
+      print('[Main] Database cache cleared successfully');
+    } catch (e) {
+      print('[Main] Could not clear database cache: $e');
+    }
+
+    // Mark migration as complete (use setSyncMetadata after clearAllCache since it clears sync_metadata)
+    await DatabaseHelper.setSyncMetadata(migrationKey, DateTime.now().toIso8601String());
+    print('[Main] Early migration completed');
+  } catch (e) {
+    print('[Main] Error during early migration: $e');
+  }
+}
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  
+
+  print('[Main] Starting app...');
+
+  // Initialize database first (needed for migration check)
+  try {
+    await DatabaseHelper.database;
+  } catch (e) {
+    print('Warning: Could not initialize database: $e');
+  }
+
+  // Run migrations BEFORE providers are created
+  await _runEarlyMigrations();
+
   // Initialize just_audio with media_kit backend for Linux only
   // macOS uses the native just_audio implementation
   if (Platform.isLinux) {
     JustAudioMediaKit.ensureInitialized();
     // Initialize notification service for track change notifications
     await NotificationService().initialize();
-  }
-  
-  // Initialize database
-  try {
-    await DatabaseHelper.database;
-  } catch (e) {
-    print('Warning: Could not initialize database: $e');
   }
   
   // Create a single AudioPlayer instance to be shared

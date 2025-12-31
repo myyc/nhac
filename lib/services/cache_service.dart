@@ -119,25 +119,19 @@ class CacheService {
       print('Cache error: $e');
     }
 
-    // Fallback to API if cache is empty or failed and network fallback is allowed
-    if (allowNetworkFallback) {
+    // If cache is empty, always try to fetch from API
+    try {
+      final artists = await api.getArtists();
       try {
-        final artists = await api.getArtists();
-        try {
-          await DatabaseHelper.insertArtists(artists);
-        } catch (e) {
-          print('Could not cache artists: $e');
-        }
-        return artists;
+        await DatabaseHelper.insertArtists(artists);
       } catch (e) {
-        print('Network fallback failed for artists: $e');
-        // Return empty list instead of throwing when network fails
-        return [];
+        print('Could not cache artists: $e');
       }
+      return artists;
+    } catch (e) {
+      print('Network fallback failed for artists: $e');
+      return [];
     }
-
-    // Return empty list if no cached data and network fallback not allowed
-    return [];
   }
   
   Future<List<Album>> getAlbums({bool forceRefresh = false, bool allowNetworkFallback = true}) async {
@@ -156,28 +150,22 @@ class CacheService {
       print('Cache error: $e');
     }
 
-    // Fallback to API if cache is empty or failed and network fallback is allowed
-    if (allowNetworkFallback) {
+    // If cache is empty, always try to fetch from API
+    try {
+      final albums = await api.getAlbumList2(
+        type: 'alphabeticalByName',
+        size: 500,
+      );
       try {
-        final albums = await api.getAlbumList2(
-          type: 'alphabeticalByName',
-          size: 500,
-        );
-        try {
-          await DatabaseHelper.insertAlbums(albums);
-        } catch (e) {
-          print('Could not cache albums: $e');
-        }
-        return albums;
+        await DatabaseHelper.insertAlbums(albums);
       } catch (e) {
-        print('Network fallback failed for albums: $e');
-        // Return empty list instead of throwing when network fails
-        return [];
+        print('Could not cache albums: $e');
       }
+      return albums;
+    } catch (e) {
+      print('Network fallback failed for albums: $e');
+      return [];
     }
-
-    // Return empty list if no cached data and network fallback not allowed
-    return [];
   }
   
   Future<List<Album>> getAlbumsByArtist(String artistId, {bool forceRefresh = false, bool allowNetworkFallback = true}) async {
@@ -195,8 +183,8 @@ class CacheService {
       return cached;
     }
 
-    // Only fallback to API if allowed and we're not forcing refresh
-    if (allowNetworkFallback && !forceRefresh) {
+    // If cache is empty, always try to fetch from API
+    if (!forceRefresh) {
       try {
         final result = await api.getArtist(artistId);
         final albums = result['albums'] as List<Album>? ?? [];
@@ -204,12 +192,10 @@ class CacheService {
         return albums;
       } catch (e) {
         print('Network fallback failed for artist albums: $e');
-        // Return empty list instead of throwing when network fails
         return [];
       }
     }
 
-    // Return empty list if no cached data and network fallback not allowed
     return [];
   }
   
@@ -228,8 +214,9 @@ class CacheService {
       return cached;
     }
 
-    // Only fallback to API if allowed and we're not forcing refresh
-    if (allowNetworkFallback && !forceRefresh) {
+    // If cache is empty, always try to fetch from API
+    // (allowNetworkFallback is just a hint for optimization, not a hard block)
+    if (!forceRefresh) {
       try {
         final result = await api.getAlbum(albumId);
         final songs = result['songs'] as List<Song>? ?? [];
@@ -237,12 +224,10 @@ class CacheService {
         return songs;
       } catch (e) {
         print('Network fallback failed for album songs: $e');
-        // Return empty list instead of throwing when network fails
         return [];
       }
     }
 
-    // Return empty list if no cached data and network fallback not allowed
     return [];
   }
   

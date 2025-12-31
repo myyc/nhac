@@ -48,7 +48,7 @@ dependencies:
   just_audio: ^0.10.4
   just_audio_media_kit: any
   media_kit: any
-  media_kit_libs_linux: any
+  media_kit_libs_audio: any  # Audio-only, ships pre-built libmpv
   
   # Image caching
   cached_network_image: ^3.4.1
@@ -102,6 +102,11 @@ dev_dependencies:
   # rules and activating additional ones.
   flutter_lints: ^5.0.0
   flutter_launcher_icons: ^0.14.4
+
+# Override just_audio_media_kit with local version that disables ytdl hook
+dependency_overrides:
+  just_audio_media_kit:
+    path: packages/just_audio_media_kit
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec

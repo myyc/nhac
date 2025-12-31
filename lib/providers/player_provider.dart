@@ -59,8 +59,10 @@ class PlayerProvider extends ChangeNotifier {
   bool _useGaplessPlayback = false; // Use performance config setting
   bool _isPlayingOffline = false;
   bool _canPlayCurrentOffline = false;
+  String? _lastError; // Last playback error message
 
   Song? get currentSong => _currentSong;
+  String? get lastError => _lastError;
   ExtractedColors? get currentColors => _currentColors;
   List<Song> get queue => _queue;
   int get currentIndex => _currentIndex;
@@ -70,7 +72,7 @@ class PlayerProvider extends ChangeNotifier {
   Duration get duration => _duration;
   double get volume => _volume;
   String? get currentStreamUrl => _currentSong != null && _api != null
-      ? _api!.getStreamUrl(_currentSong!.id)
+      ? _api!.getStreamUrl(_currentSong!.id, suffix: _currentSong!.suffix)
       : null;
   bool get isPlayingOffline => _isPlayingOffline;
   bool get canPlayOffline => _currentSong != null && _canPlayCurrentOffline;
@@ -199,6 +201,7 @@ class PlayerProvider extends ChangeNotifier {
     _playerStateSubscription = _audioPlayer.playerStateStream.listen((state) {
       // Track playing state separately from buffering
       final wasPlaying = _isPlaying;
+      final wasBuffering = _isBuffering;
       _isPlaying = state.playing;
 
       // Report playing state to ActivityCoordinator for battery optimization
@@ -211,6 +214,17 @@ class PlayerProvider extends ChangeNotifier {
       _isBuffering = state.processingState == ProcessingState.buffering ||
                      state.processingState == ProcessingState.loading ||
                      (state.playing && state.processingState != ProcessingState.ready);
+
+      // Detect playback failure: was loading/buffering but went to idle without completing
+      if (wasBuffering && state.processingState == ProcessingState.idle && !state.playing) {
+        _lastError = 'Failed to play track. Check your connection or try again.';
+        if (kDebugMode) print('[PlayerProvider] Playback failed - stream error detected');
+      }
+
+      // Clear error when playback starts successfully
+      if (state.processingState == ProcessingState.ready && state.playing) {
+        _lastError = null;
+      }
 
       // Debug logging to see what states we're getting
       if (kDebugMode) {
@@ -367,7 +381,7 @@ class PlayerProvider extends ChangeNotifier {
             final shouldTranscode = _networkProvider != null &&
                                    !_networkProvider!.isOnWifi &&
                                    !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-            audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+            audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode, suffix: _currentSong!.suffix);
             _isPlayingOffline = false;
           } else if (audioSource == null && _networkProvider!.isOffline) {
             // Offline and no cached file - can't play
@@ -530,7 +544,7 @@ class PlayerProvider extends ChangeNotifier {
           final shouldTranscode = _networkProvider != null &&
                                  !_networkProvider!.isOnWifi &&
                                  !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode, suffix: _currentSong!.suffix);
           _isPlayingOffline = false;
         } else if (audioSource == null && _networkProvider!.isOffline) {
           // Offline and no cached file - can't play
@@ -665,7 +679,7 @@ class PlayerProvider extends ChangeNotifier {
         final shouldTranscode = _networkProvider != null &&
                                !_networkProvider!.isOnWifi &&
                                !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode, suffix: _currentSong!.suffix);
         _isPlayingOffline = false;
       } else if (audioSource == null && _networkProvider!.isOffline) {
         // Offline and no cached file - can't play
@@ -696,7 +710,7 @@ class PlayerProvider extends ChangeNotifier {
           final shouldTranscode = _networkProvider != null &&
                                  !_networkProvider!.isOnWifi &&
                                  !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+          audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode, suffix: _currentSong!.suffix);
           await _audioPlayer.setUrl(audioSource);
         } else {
           rethrow; // If streaming also failed, propagate the error
@@ -762,7 +776,7 @@ class PlayerProvider extends ChangeNotifier {
         final shouldTranscode = _networkProvider != null &&
                                !_networkProvider!.isOnWifi &&
                                !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+        audioSource = _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode, suffix: _currentSong!.suffix);
         _isPlayingOffline = false;
       } else if (audioSource == null && _networkProvider!.isOffline) {
         // Offline and no cached file - can't play
@@ -801,6 +815,12 @@ class PlayerProvider extends ChangeNotifier {
     await _audioPlayer.setVolume(_volume);
     notifyListeners();
     _savePlayerState();
+  }
+
+  /// Clear any playback error message
+  void clearError() {
+    _lastError = null;
+    notifyListeners();
   }
 
   Future<void> _loadPersistedState() async {
@@ -984,7 +1004,7 @@ class PlayerProvider extends ChangeNotifier {
         final shouldTranscode = _networkProvider != null &&
                                !_networkProvider!.isOnWifi &&
                                !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-        audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode);
+        audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode, suffix: song.suffix);
         if (i == startIndex) {
           _isPlayingOffline = false;
           // Check if we can play this song offline
@@ -1076,7 +1096,7 @@ class PlayerProvider extends ChangeNotifier {
       final shouldTranscode = _networkProvider != null &&
                              !_networkProvider!.isOnWifi &&
                              !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-      audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode);
+      audioSource = _api!.getStreamUrl(song.id, transcode: shouldTranscode, suffix: song.suffix);
     }
 
     // Create the appropriate audio source
@@ -1141,7 +1161,7 @@ class PlayerProvider extends ChangeNotifier {
           }
         } else if (!isOffline) {
           // Not cached and online - preload from network
-          final url = _api!.getStreamUrl(song.id);
+          final url = _api!.getStreamUrl(song.id, suffix: song.suffix);
           final player = await _cacheManager.preloadTrack(song.id, url);
           if (player != null) {
             _preloadedSongIds.add(song.id);
@@ -1175,7 +1195,7 @@ class PlayerProvider extends ChangeNotifier {
       // Use the preloaded URL directly
       // Note: In a more sophisticated implementation, we'd swap the AudioPlayer instances
       // but just_audio has limitations here
-      await _audioPlayer.setUrl(_api!.getStreamUrl(_currentSong!.id));
+      await _audioPlayer.setUrl(_api!.getStreamUrl(_currentSong!.id, suffix: _currentSong!.suffix));
       
       if (duration != null) {
         _duration = duration;
@@ -1329,7 +1349,7 @@ class PlayerProvider extends ChangeNotifier {
             !_networkProvider!.isOnWifi &&
             !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
         final streamUrl =
-            _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode);
+            _api!.getStreamUrl(_currentSong!.id, transcode: shouldTranscode, suffix: _currentSong!.suffix);
         await _audioPlayer.setUrl(streamUrl);
         await _audioPlayer.seek(savedPosition);
         if (wasPlaying) await _audioPlayer.play();

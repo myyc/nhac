@@ -31,7 +31,7 @@ class SimplePlayerProvider extends ChangeNotifier {
     _currentSong = song;
     _queue = [song];
     _currentIndex = 0;
-    _currentStreamUrl = _api!.getStreamUrl(song.id);
+    _currentStreamUrl = _api!.getStreamUrl(song.id, suffix: song.suffix);
     _isPlaying = true;
     
     notifyListeners();
@@ -43,7 +43,7 @@ class SimplePlayerProvider extends ChangeNotifier {
     _queue = songs;
     _currentIndex = startIndex;
     _currentSong = songs[startIndex];
-    _currentStreamUrl = _api!.getStreamUrl(_currentSong!.id);
+    _currentStreamUrl = _api!.getStreamUrl(_currentSong!.id, suffix: _currentSong!.suffix);
     _isPlaying = true;
     
     notifyListeners();
@@ -80,7 +80,7 @@ class SimplePlayerProvider extends ChangeNotifier {
     if (_currentIndex < _queue.length - 1) {
       _currentIndex++;
       _currentSong = _queue[_currentIndex];
-      _currentStreamUrl = _api!.getStreamUrl(_currentSong!.id);
+      _currentStreamUrl = _api!.getStreamUrl(_currentSong!.id, suffix: _currentSong!.suffix);
       _isPlaying = true;
       
       notifyListeners();
@@ -93,7 +93,7 @@ class SimplePlayerProvider extends ChangeNotifier {
     if (_currentIndex > 0) {
       _currentIndex--;
       _currentSong = _queue[_currentIndex];
-      _currentStreamUrl = _api!.getStreamUrl(_currentSong!.id);
+      _currentStreamUrl = _api!.getStreamUrl(_currentSong!.id, suffix: _currentSong!.suffix);
       _isPlaying = true;
       
       notifyListeners();

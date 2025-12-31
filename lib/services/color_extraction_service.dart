@@ -1,8 +1,8 @@
 import 'dart:io';
-import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:palette_generator/palette_generator.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 
 class ColorExtractionService {
   static final ColorExtractionService _instance = ColorExtractionService._internal();
@@ -12,10 +12,11 @@ class ColorExtractionService {
   // Cache for extracted colors to avoid re-processing
   final Map<String, ExtractedColors> _colorCache = {};
 
-  /// Extracts colors from an album cover image
-  Future<ExtractedColors> extractColorsFromImage(String imageUrl, {String? cacheKey}) async {
+  /// Extracts colors from an album cover image.
+  /// [isRetry] is used internally to prevent infinite retry loops.
+  Future<ExtractedColors> extractColorsFromImage(String imageUrl, {String? cacheKey, bool isRetry = false}) async {
     final key = cacheKey ?? imageUrl;
-    
+
     // Return cached colors if available
     if (_colorCache.containsKey(key)) {
       return _colorCache[key]!;
@@ -24,7 +25,7 @@ class ColorExtractionService {
     try {
       // Create image provider from cached network image
       final imageProvider = CachedNetworkImageProvider(imageUrl);
-      
+
       // Generate palette from the image
       final paletteGenerator = await PaletteGenerator.fromImageProvider(
         imageProvider,
@@ -34,12 +35,22 @@ class ColorExtractionService {
 
       // Extract the most suitable colors
       final extractedColors = _processColors(paletteGenerator);
-      
+
       // Cache the results
       _colorCache[key] = extractedColors;
-      
+
       return extractedColors;
     } catch (e) {
+      // If this looks like a corrupt cache error and we haven't retried yet
+      if (!isRetry && e.toString().contains('Invalid image data')) {
+        try {
+          // Clear the corrupt cache entry and retry
+          await DefaultCacheManager().removeFile(imageUrl);
+          return extractColorsFromImage(imageUrl, cacheKey: cacheKey, isRetry: true);
+        } catch (_) {
+          // Ignore cache clearing errors
+        }
+      }
       // Return default colors if extraction fails
       return ExtractedColors.defaultColors();
     }

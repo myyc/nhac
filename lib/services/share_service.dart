@@ -1,12 +1,11 @@
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
-import 'package:flutter/rendering.dart';
 import 'package:screenshot/screenshot.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:flutter_cache_manager/flutter_cache_manager.dart';
 import 'package:google_fonts/google_fonts.dart';
 import '../models/song.dart';
 import '../services/color_extraction_service.dart';
@@ -19,6 +18,27 @@ class ShareService {
   final ScreenshotController _screenshotController = ScreenshotController();
   final ColorExtractionService _colorService = ColorExtractionService();
 
+  /// Pre-validates and fetches the image, clearing corrupt cache if needed
+  Future<void> _ensureValidCachedImage(String imageUrl) async {
+    try {
+      // Try to fetch the file from cache
+      final file = await DefaultCacheManager().getSingleFile(imageUrl);
+      // Try to decode it to verify it's valid
+      final bytes = await file.readAsBytes();
+      await ui.instantiateImageCodec(bytes);
+    } catch (e) {
+      // If decoding fails, the cache is corrupt - clear and re-fetch
+      debugPrint('ShareService: Corrupt cache detected, clearing: $e');
+      try {
+        await DefaultCacheManager().removeFile(imageUrl);
+        // Re-fetch the image
+        await DefaultCacheManager().getSingleFile(imageUrl);
+      } catch (e2) {
+        debugPrint('ShareService: Failed to re-fetch image: $e2');
+      }
+    }
+  }
+
   Future<void> shareStoryImage({
     required BuildContext context,
     required Song song,
@@ -29,12 +49,15 @@ class ShareService {
     try {
       debugPrint('ShareService: Starting share for song: ${song.title}');
       debugPrint('ShareService: Cover art URL: $coverArtUrl');
-      
+
       // Check if coverArtUrl is valid
       if (coverArtUrl.isEmpty) {
         throw Exception('Invalid cover art URL');
       }
-      
+
+      // Pre-validate and fetch the image (clears corrupt cache if needed)
+      await _ensureValidCachedImage(coverArtUrl);
+
       final extractedColors = await _colorService.extractColorsFromImage(
         coverArtUrl,
         cacheKey: 'share_${song.id}',

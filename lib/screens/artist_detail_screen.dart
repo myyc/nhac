@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/safe_cached_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../models/artist.dart';
@@ -129,16 +129,14 @@ class _ArtistDetailScreenState extends State<ArtistDetailScreen> {
                                   child: album.coverArt != null && api != null
                                       ? ClipRRect(
                                           borderRadius: BorderRadius.circular(8),
-                                          child: CachedNetworkImage(
-                                            key: ValueKey('artist_${album.id}_${album.coverArt}'),
+                                          child: SafeCachedImage(
                                             imageUrl: cacheProvider.getCoverArtUrl(album.coverArt),
-                                            cacheKey: 'cover_${album.id}_${album.coverArt}_300',
                                             fit: BoxFit.cover,
                                             width: double.infinity,
                                             height: double.infinity,
-                                            placeholder: (context, url) => 
+                                            placeholder: (context, url) =>
                                                 const Center(child: CircularProgressIndicator()),
-                                            errorWidget: (context, url, error) => 
+                                            errorWidget: (context, url, error) =>
                                                 const Center(child: Icon(Icons.album, size: 48)),
                                           ),
                                         )
