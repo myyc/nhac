@@ -83,7 +83,7 @@ jobs:
       - name: Setup Flatpak
         run: |
           flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-          flatpak install --user -y flathub org.freedesktop.Platform//24.08 org.freedesktop.Sdk//24.08
+          flatpak install --user -y flathub org.freedesktop.Platform//25.08 org.freedesktop.Sdk//25.08
 
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
