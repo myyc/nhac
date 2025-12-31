@@ -3,10 +3,6 @@ runtime: org.freedesktop.Platform
 runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 command: nhac
-
-# Note: org.freedesktop.Platform.codecs-extra (successor to ffmpeg-full)
-# is automatically installed with the 25.08 runtime
-
 finish-args:
   # Tell media_kit where to find libmpv
   - --env=LIBMPV_LIBRARY_PATH=/app/lib/libmpv.so
@@ -49,63 +45,94 @@ modules:
       - --disable-static
       - --enable-threadsafe
 
-  # libass for subtitle support (mpv dependency)
-  - name: libass
-    buildsystem: autotools
-    config-opts:
-      - --disable-static
+  # Python virtualenv with jinja2 for libplacebo build (SDK 25.08 uses Python 3.13)
+  - name: python3-jinja2-venv
+    buildsystem: simple
     sources:
-      - type: archive
-        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.gz
-        sha256: da7c348deb6fa6c24507afab2dee7545ba5dd5bbf90a137bfe9e738f7df68537
+      - type: file
+        url: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
+        sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
+      - type: file
+        url: https://files.pythonhosted.org/packages/a9/21/9b05698b46f218fc0e118e1f8168395c65c8a2c750ae2bab54fc4bd4e0e8/markupsafe-3.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+        sha256: a9219b05698b46f218fc0e118e1f8168395c65c8a2c750ae2bab54fc4bd4e0e8
+    build-commands:
+      - python3 -m venv /app/jinja2-venv
+      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . markupsafe-3.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . jinja2-3.1.6-py3-none-any.whl
 
-  # libplacebo for GPU video processing (mpv dependency)
+  # libplacebo dependency for mpv
   - name: libplacebo
     buildsystem: meson
-    config-opts:
-      - -Dopengl=enabled
-      - -Dvulkan=disabled
-      - -Dglslang=disabled
-      - -Dd3d11=disabled
-      - -Ddemos=false
     sources:
       - type: archive
-        url: https://code.videolan.org/videolan/libplacebo/-/archive/v7.349.0/libplacebo-v7.349.0.tar.gz
-        sha256: 79120e685a1836344b51b13b6a5661622486a84e4d4a35f6c8d01679a20fbc86
-      - type: archive
-        url: https://github.com/pallets/jinja/archive/refs/tags/3.1.6.tar.gz
-        sha256: 2074b22a72caa65474902234b320d73463d6d4c223ee49f4b433495758356337
-        dest: 3rdparty/jinja
-      - type: archive
-        url: https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.8.tar.gz
-        sha256: 44f06f9195427c7017f5028d0894f57eb216b0a8f7c4eda7ce883732aeb2d0fc
-        dest: 3rdparty/glad
+        url: https://github.com/haasn/libplacebo/archive/refs/tags/v7.351.0.tar.gz
+        sha256: 716954501d9b76e6906fddda66febc5886493d0673dd265ec1e6e52f4e5cd7c6
+    build-options:
+      env:
+        PATH: "/app/jinja2-venv/bin:/usr/bin:/bin"
+        PYTHONPATH: "/app/jinja2-venv/lib/python3.13/site-packages"
+    config-opts:
+      - -Dvulkan=disabled
+      - -Dopengl=disabled
+      - -Dd3d11=disabled
+      - -Dlcms=disabled
+      - -Ddemos=false
+      - -Dtests=false
+      - -Dbench=false
+      - -Dfuzz=false
 
-  # libmpv for audio playback (used by media_kit)
+  # libass dependency for mpv (required even for audio-only)
+  - name: libass
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.4/libass-0.17.4.tar.gz
+        sha256: a886b3b80867f437bc55cff3280a652bfa0d37b43d2aff39ddf3c4f288b8c5a8
+    config-opts:
+      - --disable-static
+      - --enable-shared
+
+  # Build libmpv from source (audio only)
   - name: libmpv
     buildsystem: meson
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/v0.40.0.tar.gz
+        sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
     config-opts:
       - -Dlibmpv=true
       - -Dcplayer=false
-      - -Dlua=disabled
-      - -Djavascript=disabled
-      - -Ddebug=false
-      - -Dbuild-date=false
-      - -Dalsa=disabled
       - -Dmanpage-build=disabled
+      - -Dhtml-build=disabled
+      # Audio only, disable all video
+      - -Dgl=disabled
       - -Dvulkan=disabled
+      - -Dvaapi=disabled
+      - -Dvdpau=disabled
+      - -Dx11=disabled
+      - -Dwayland=disabled
+      - -Ddrm=disabled
+      - -Dgbm=disabled
+      - -Degl=disabled
+      # Enable audio support
+      - -Dalsa=enabled
       - -Dpulse=enabled
       - -Dpipewire=enabled
-    cleanup:
-      - /share/bash-completion
-      - /share/zsh
-      - /share/doc
-      - /share/icons
-      - /share/applications
-    sources:
-      - type: archive
-        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.40.0.tar.gz
-        sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
+      # Disable features we don't need
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Dzlib=disabled
+      - -Dlcms2=disabled
+      - -Dlibbluray=disabled
+      - -Ddvdnav=disabled
+      - -Dcdda=disabled
+      - -Duchardet=disabled
+      - -Drubberband=disabled
+      - -Dzimg=disabled
+      - -Dcaca=disabled
+      - -Dlibarchive=disabled
+      - -Dlibavdevice=disabled
+      - -Dsdl2=disabled
 
   - name: nhac
     buildsystem: simple
