@@ -8,6 +8,8 @@ command: nhac
 # is automatically installed with the 25.08 runtime
 
 finish-args:
+  # Tell media_kit where to find libmpv
+  - --env=LIBMPV_LIBRARY_PATH=/app/lib/libmpv.so
   # Network access for streaming
   - --share=network
   # Audio playback
