@@ -73,7 +73,7 @@ modules:
         PYTHONPATH: "/app/jinja2-venv/lib/python3.13/site-packages"
     config-opts:
       - -Dvulkan=disabled
-      - -Dopengl=disabled
+      - -Dopengl=enabled
       - -Dd3d11=disabled
       - -Dlcms=disabled
       - -Ddemos=false
