@@ -3,6 +3,10 @@ runtime: org.freedesktop.Platform
 runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 command: nhac
+
+# Note: org.freedesktop.Platform.codecs-extra (successor to ffmpeg-full)
+# is automatically installed with the 25.08 runtime
+
 finish-args:
   # Network access for streaming
   - --share=network
@@ -43,8 +47,63 @@ modules:
       - --disable-static
       - --enable-threadsafe
 
-  # PipeWire: Uses host's PipeWire via socket (--filesystem=xdg-run/pipewire-0:ro)
-  # libmpv: Provided by media_kit_libs_audio package (pre-built)
+  # libass for subtitle support (mpv dependency)
+  - name: libass
+    buildsystem: autotools
+    config-opts:
+      - --disable-static
+    sources:
+      - type: archive
+        url: https://github.com/libass/libass/releases/download/0.17.3/libass-0.17.3.tar.gz
+        sha256: da7c348deb6fa6c24507afab2dee7545ba5dd5bbf90a137bfe9e738f7df68537
+
+  # libplacebo for GPU video processing (mpv dependency)
+  - name: libplacebo
+    buildsystem: meson
+    config-opts:
+      - -Dopengl=enabled
+      - -Dvulkan=disabled
+      - -Dglslang=disabled
+      - -Dd3d11=disabled
+      - -Ddemos=false
+    sources:
+      - type: archive
+        url: https://code.videolan.org/videolan/libplacebo/-/archive/v7.349.0/libplacebo-v7.349.0.tar.gz
+        sha256: 79120e685a1836344b51b13b6a5661622486a84e4d4a35f6c8d01679a20fbc86
+      - type: archive
+        url: https://github.com/pallets/jinja/archive/refs/tags/3.1.6.tar.gz
+        sha256: 2074b22a72caa65474902234b320d73463d6d4c223ee49f4b433495758356337
+        dest: 3rdparty/jinja
+      - type: archive
+        url: https://github.com/Dav1dde/glad/archive/refs/tags/v2.0.8.tar.gz
+        sha256: 44f06f9195427c7017f5028d0894f57eb216b0a8f7c4eda7ce883732aeb2d0fc
+        dest: 3rdparty/glad
+
+  # libmpv for audio playback (used by media_kit)
+  - name: libmpv
+    buildsystem: meson
+    config-opts:
+      - -Dlibmpv=true
+      - -Dcplayer=false
+      - -Dlua=disabled
+      - -Djavascript=disabled
+      - -Ddebug=false
+      - -Dbuild-date=false
+      - -Dalsa=disabled
+      - -Dmanpage-build=disabled
+      - -Dvulkan=disabled
+      - -Dpulse=enabled
+      - -Dpipewire=enabled
+    cleanup:
+      - /share/bash-completion
+      - /share/zsh
+      - /share/doc
+      - /share/icons
+      - /share/applications
+    sources:
+      - type: archive
+        url: https://github.com/mpv-player/mpv/archive/refs/tags/v0.40.0.tar.gz
+        sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
 
   - name: nhac
     buildsystem: simple
