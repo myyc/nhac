@@ -95,6 +95,9 @@ modules:
   # Build libmpv from source (audio only)
   - name: libmpv
     buildsystem: meson
+    build-options:
+      env:
+        PKG_CONFIG_PATH: "/app/lib/pkgconfig:/app/share/pkgconfig"
     sources:
       - type: archive
         url: https://github.com/mpv-player/mpv/archive/v0.40.0.tar.gz
