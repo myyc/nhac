@@ -41,6 +41,7 @@ modules:
         url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.7/pipewire-1.4.7.tar.gz
         sha256: 9d54f025e1e7ae73b980a6c8be2e8e6387e24d554d58478d6495734ce1ee5a93
     config-opts:
+      - --libdir=lib
       - -Dalsa=enabled
       - -Djack=disabled
       - -Dpipewire-alsa=enabled
@@ -93,6 +94,7 @@ modules:
         PATH: "/app/jinja2-venv/bin:/usr/bin:/bin"
         PYTHONPATH: "/app/jinja2-venv/lib/python3.12/site-packages"
     config-opts:
+      - --libdir=lib
       - -Dvulkan=disabled
       - -Dopengl=disabled
       - -Dd3d11=disabled
@@ -121,6 +123,7 @@ modules:
         url: https://github.com/mpv-player/mpv/archive/v0.40.0.tar.gz
         sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
     config-opts:
+      - --libdir=lib
       - -Dlibmpv=true
       - -Dcplayer=false
       - -Dmanpage-build=disabled
