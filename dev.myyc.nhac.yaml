@@ -54,7 +54,7 @@ modules:
         sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
       - type: file
         url: https://files.pythonhosted.org/packages/a9/21/9b05698b46f218fc0e118e1f8168395c65c8a2c750ae2bab54fc4bd4e0e8/markupsafe-3.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
-        sha256: a9219b05698b46f218fc0e118e1f8168395c65c8a2c750ae2bab54fc4bd4e0e8
+        sha256: ccfcd093f13f0f0b7fdd0f198b90053bf7b2f02a3927a30e63f3ccc9df56b676
     build-commands:
       - python3 -m venv /app/jinja2-venv
       - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . markupsafe-3.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
