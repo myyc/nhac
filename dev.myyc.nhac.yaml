@@ -156,7 +156,6 @@ modules:
       - -Dcaca=disabled
       - -Dlibarchive=disabled
       - -Dlibavdevice=disabled
-      - -Dsdl2=disabled
 
   - name: nhac
     buildsystem: simple
