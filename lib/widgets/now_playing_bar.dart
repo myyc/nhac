@@ -119,14 +119,27 @@ class NowPlayingBar extends StatelessWidget {
                                 maxLines: 1,
                                 overflow: TextOverflow.ellipsis,
                               ),
-                              Text(
-                                song.artist ?? 'Unknown Artist',
-                                style: theme.textTheme.bodyMedium?.copyWith(
-                                  color: theme.colorScheme.onSurface.withOpacity(0.7),
+                              if (playerProvider.lastError != null)
+                                GestureDetector(
+                                  onTap: playerProvider.clearError,
+                                  child: Text(
+                                    playerProvider.lastError!,
+                                    style: theme.textTheme.bodyMedium?.copyWith(
+                                      color: theme.colorScheme.error,
+                                    ),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                )
+                              else
+                                Text(
+                                  song.artist ?? 'Unknown Artist',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: theme.colorScheme.onSurface.withOpacity(0.7),
+                                  ),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
                                 ),
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                              ),
                             ],
                           ),
                         ),

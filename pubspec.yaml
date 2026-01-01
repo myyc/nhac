@@ -44,11 +44,9 @@ dependencies:
   # State management
   provider: ^6.1.2
   
-  # Audio playback with Linux support
+  # Audio playback (Android/iOS/macOS use just_audio, Linux/Windows use custom mpv FFI)
   just_audio: ^0.10.4
-  just_audio_media_kit: any
-  media_kit: any
-  media_kit_libs_linux: any
+  ffi: ^2.1.0  # For libmpv FFI bindings on Linux/Windows
   
   # Image caching
   cached_network_image: ^3.4.1

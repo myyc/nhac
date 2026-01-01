@@ -4,7 +4,6 @@
 
 list(APPEND FLUTTER_PLUGIN_LIST
   bitsdojo_window_linux
-  media_kit_libs_linux
   url_launcher_linux
 )
 

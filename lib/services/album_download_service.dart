@@ -184,7 +184,7 @@ class AlbumDownloadService extends ChangeNotifier {
           // Download the song
           final isDesktop = Platform.isLinux || Platform.isWindows || Platform.isMacOS;
           final shouldTranscode = !isDesktop && !networkProvider.isOnWifi;
-          final url = api.getStreamUrl(song.id, transcode: shouldTranscode);
+          final url = api.getStreamUrl(song.id, transcode: shouldTranscode, suffix: song.suffix);
 
           if (kDebugMode) {
             print('[AlbumDownload] Downloading from: $url');

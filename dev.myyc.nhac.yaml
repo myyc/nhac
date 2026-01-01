@@ -4,6 +4,8 @@ runtime-version: "25.08"
 sdk: org.freedesktop.Sdk
 command: nhac
 finish-args:
+  # Tell our FFI bindings where to find libmpv
+  - --env=LIBMPV_LIBRARY_PATH=/app/lib/libmpv.so
   # Network access for streaming
   - --share=network
   # Audio playback
@@ -27,28 +29,19 @@ finish-args:
   - --talk-name=org.freedesktop.portal.FileChooser
   # For notifications
   - --talk-name=org.freedesktop.Notifications
+  # PipeWire socket access for modern audio
+  - --filesystem=xdg-run/pipewire-0:ro
 
 modules:
-  # SQLite3 for database/caching support
-  - name: sqlite3
-    buildsystem: autotools
-    sources:
-      - type: archive
-        url: https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
-        sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
-    config-opts:
-      - --enable-shared
-      - --disable-static
-      - --enable-threadsafe
-
   # PipeWire for modern audio support
   - name: pipewire
     buildsystem: meson
     sources:
       - type: archive
-        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.7/pipewire-1.4.7.tar.gz
-        sha256: 9d54f025e1e7ae73b980a6c8be2e8e6387e24d554d58478d6495734ce1ee5a93
+        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.9/pipewire-1.4.9.tar.gz
+        sha256: 8066a7b220069e4c6e3b02bd2b6ea303bba66df255023c07c99323449ba8fe3c
     config-opts:
+      - --libdir=lib
       - -Dalsa=enabled
       - -Djack=disabled
       - -Dpipewire-alsa=enabled
@@ -61,6 +54,18 @@ modules:
       - -Dsession-managers=[]
       - -Dudev=disabled
       - -Dudevrulesdir=disabled
+
+  # SQLite3 for database/caching support
+  - name: sqlite3
+    buildsystem: autotools
+    sources:
+      - type: archive
+        url: https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
+        sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+    config-opts:
+      - --enable-shared
+      - --disable-static
+      - --enable-threadsafe
 
   # Python virtualenv with jinja2 for libplacebo build
   - name: python3-jinja2-venv
@@ -89,6 +94,7 @@ modules:
         PATH: "/app/jinja2-venv/bin:/usr/bin:/bin"
         PYTHONPATH: "/app/jinja2-venv/lib/python3.13/site-packages"
     config-opts:
+      - --libdir=lib
       - -Dvulkan=disabled
       - -Dopengl=disabled
       - -Dd3d11=disabled
@@ -114,9 +120,10 @@ modules:
     buildsystem: meson
     sources:
       - type: archive
-        url: https://github.com/mpv-player/mpv/archive/v0.40.0.tar.gz
-        sha256: 10a0f4654f62140a6dd4d380dcf0bbdbdcf6e697556863dc499c296182f081a3
+        url: https://github.com/mpv-player/mpv/archive/v0.41.0.tar.gz
+        sha256: ee21092a5ee427353392360929dc64645c54479aefdb5babc5cfbb5fad626209
     config-opts:
+      - --libdir=lib
       - -Dlibmpv=true
       - -Dcplayer=false
       - -Dmanpage-build=disabled
@@ -149,7 +156,6 @@ modules:
       - -Dcaca=disabled
       - -Dlibarchive=disabled
       - -Dlibavdevice=disabled
-      - -Dsdl2=disabled
 
   - name: nhac
     buildsystem: simple
@@ -186,13 +192,13 @@ modules:
       # Install desktop file
       - install -Dm644 linux/nhac.desktop /app/share/applications/dev.myyc.nhac.desktop
 
-      # Install icons in multiple sizes (use dev.myyc.nhac named files if they exist, fallback to nhac-*)
+      # Install icons in multiple sizes
       - test -f linux/icons/dev.myyc.nhac-64.png && install -Dm644 linux/icons/dev.myyc.nhac-64.png /app/share/icons/hicolor/64x64/apps/dev.myyc.nhac.png || install -Dm644 linux/icons/nhac-64.png /app/share/icons/hicolor/64x64/apps/dev.myyc.nhac.png
       - test -f linux/icons/dev.myyc.nhac-128.png && install -Dm644 linux/icons/dev.myyc.nhac-128.png /app/share/icons/hicolor/128x128/apps/dev.myyc.nhac.png || install -Dm644 linux/icons/nhac-128.png /app/share/icons/hicolor/128x128/apps/dev.myyc.nhac.png
       - test -f linux/icons/dev.myyc.nhac-256.png && install -Dm644 linux/icons/dev.myyc.nhac-256.png /app/share/icons/hicolor/256x256/apps/dev.myyc.nhac.png || install -Dm644 linux/icons/nhac-256.png /app/share/icons/hicolor/256x256/apps/dev.myyc.nhac.png
       - test -f linux/icons/dev.myyc.nhac-512.png && install -Dm644 linux/icons/dev.myyc.nhac-512.png /app/share/icons/hicolor/512x512/apps/dev.myyc.nhac.png || install -Dm644 linux/icons/nhac-512.png /app/share/icons/hicolor/512x512/apps/dev.myyc.nhac.png
 
-      # Install symbolic notification icon (separate from main app icon, following Telegram's pattern)
+      # Install symbolic notification icon
       - install -Dm644 linux/icons/nhac-symbolic-16.png /app/share/icons/hicolor/16x16/apps/dev.myyc.nhac-symbolic.png
       - install -Dm644 linux/icons/nhac-symbolic-24.png /app/share/icons/hicolor/24x24/apps/dev.myyc.nhac-symbolic.png
       - install -Dm644 linux/icons/nhac-symbolic-32.png /app/share/icons/hicolor/32x32/apps/dev.myyc.nhac-symbolic.png

@@ -1,6 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
+import '../widgets/safe_cached_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
 import '../providers/network_provider.dart';
@@ -143,15 +143,15 @@ class _RecentlyAddedScreenState extends State<RecentlyAddedScreen> {
                       child: album.coverArt != null && api != null
                           ? ClipRRect(
                               borderRadius: BorderRadius.circular(8),
-                              child: CachedNetworkImage(
+                              child: SafeCachedImage(
                                 imageUrl: api.getCoverArtUrl(album.coverArt, size: 160),
                                 httpHeaders: const {
                                   'User-Agent': 'nhac/1.0.0',
                                 },
                                 fit: BoxFit.cover,
-                                placeholder: (context, url) => 
+                                placeholder: (context, url) =>
                                     const Center(child: CircularProgressIndicator()),
-                                errorWidget: (context, url, error) => 
+                                errorWidget: (context, url, error) =>
                                     const Center(child: Icon(Icons.album)),
                               ),
                             )

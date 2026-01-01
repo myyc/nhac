@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'dart:io' show Platform;
+import '../widgets/safe_cached_image.dart';
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
 import '../providers/cache_provider.dart';
@@ -142,16 +142,12 @@ class _SearchScreenState extends State<SearchScreen> {
         child: song.coverArt != null && api != null
             ? ClipRRect(
                 borderRadius: BorderRadius.circular(4),
-                child: CachedNetworkImage(
-                  key: ValueKey('search_${song.id}_${song.coverArt}'),
+                child: SafeCachedImage(
                   imageUrl: cacheProvider.getCoverArtUrl(song.coverArt, size: 96),
-                  cacheKey: 'cover_${song.id}_${song.coverArt}_96',
                   fit: BoxFit.cover,
-                  memCacheWidth: 96,
-                  memCacheHeight: 96,
-                  placeholder: (context, url) => 
+                  placeholder: (context, url) =>
                       const Center(child: Icon(Icons.music_note, size: 20)),
-                  errorWidget: (context, url, error) => 
+                  errorWidget: (context, url, error) =>
                       const Center(child: Icon(Icons.music_note, size: 20)),
                 ),
               )
@@ -321,12 +317,12 @@ class _SearchScreenState extends State<SearchScreen> {
                                   child: album.coverArt != null && api != null
                                       ? ClipRRect(
                                           borderRadius: BorderRadius.circular(4),
-                                          child: CachedNetworkImage(
+                                          child: SafeCachedImage(
                                             imageUrl: cacheProvider.getCoverArtUrl(album.coverArt, size: 96),
                                             fit: BoxFit.cover,
-                                            placeholder: (context, url) => 
+                                            placeholder: (context, url) =>
                                                 const Center(child: Icon(Icons.album, size: 20)),
-                                            errorWidget: (context, url, error) => 
+                                            errorWidget: (context, url, error) =>
                                                 const Center(child: Icon(Icons.album, size: 20)),
                                           ),
                                         )

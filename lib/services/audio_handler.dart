@@ -309,9 +309,12 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
         final shouldTranscode = networkProvider != null &&
                                !networkProvider!.isOnWifi &&
                                !(Platform.isLinux || Platform.isWindows || Platform.isMacOS);
-        audioSourcePath = _api.getStreamUrl(song.id, transcode: shouldTranscode);
+        audioSourcePath = _api.getStreamUrl(song.id, transcode: shouldTranscode, suffix: song.suffix);
         if (i == startIndex) {
-          if (kDebugMode) print('[AudioHandler] Using stream for ${song.title}');
+          if (kDebugMode) {
+            print('[AudioHandler] Using stream for ${song.title}');
+            print('[AudioHandler] Stream URL: $audioSourcePath');
+          }
         }
       }
 
@@ -350,19 +353,28 @@ class NhacAudioHandler extends BaseAudioHandler with SeekHandler {
 
     // Use setAudioSources for all platforms
     if (audioSources.isNotEmpty) {
-      await _player.setAudioSources(
-        audioSources,
-        initialIndex: adjustedStartIndex,
-      );
+      try {
+        await _player.setAudioSources(
+          audioSources,
+          initialIndex: adjustedStartIndex,
+        );
 
-      // Update the current media item
-      if (adjustedStartIndex < mediaItems.length) {
-        mediaItem.add(mediaItems[adjustedStartIndex]);
+        // Update the current media item
+        if (adjustedStartIndex < mediaItems.length) {
+          mediaItem.add(mediaItems[adjustedStartIndex]);
+        }
+
+        // Mark initial load complete (enables notifications for subsequent track changes)
+        _isInitialLoad = false;
+        _lastNotifiedIndex = null; // Reset so first track change in new queue shows notification
+      } catch (e) {
+        // Handle "Loading interrupted" gracefully - this happens when user rapidly switches tracks
+        if (e.toString().contains('Loading interrupted')) {
+          if (kDebugMode) print('[AudioHandler] Loading interrupted - user switched tracks');
+        } else {
+          if (kDebugMode) print('[AudioHandler] Error loading audio: $e');
+        }
       }
-
-      // Mark initial load complete (enables notifications for subsequent track changes)
-      _isInitialLoad = false;
-      _lastNotifiedIndex = null; // Reset so first track change in new queue shows notification
     } else if (isOffline) {
       if (kDebugMode) print('[AudioHandler] No playable songs available offline');
     }

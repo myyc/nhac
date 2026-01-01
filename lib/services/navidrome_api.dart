@@ -54,37 +54,45 @@ class NavidromeApi {
     return md5.convert(bytes).toString();
   }
 
-  Map<String, String> _getAuthParams({bool forceNew = false}) {
+  Map<String, String> _getAuthParams({bool forceNew = false, bool includeFormat = true}) {
     // Use cached auth params for stable URLs unless forced or expired
     final now = DateTime.now();
-    if (!forceNew && 
-        _cachedSalt != null && 
-        _cachedToken != null && 
+    if (!forceNew &&
+        _cachedSalt != null &&
+        _cachedToken != null &&
         _cacheTime != null &&
         now.difference(_cacheTime!) < _cacheExpiry) {
-      return {
+      final params = {
         'u': username,
         't': _cachedToken!,
         's': _cachedSalt!,
         'v': apiVersion,
         'c': clientName,
-        'f': 'json',
       };
+      // Only add f=json for API calls that return JSON, not for binary endpoints (stream, coverArt)
+      if (includeFormat) {
+        params['f'] = 'json';
+      }
+      return params;
     }
-    
+
     // Generate new auth params and cache them
     _cachedSalt = _generateSalt();
     _cachedToken = _generateToken(_cachedSalt!);
     _cacheTime = now;
-    
-    return {
+
+    final params = {
       'u': username,
       't': _cachedToken!,
       's': _cachedSalt!,
       'v': apiVersion,
       'c': clientName,
-      'f': 'json',
     };
+    // Only add f=json for API calls that return JSON, not for binary endpoints (stream, coverArt)
+    if (includeFormat) {
+      params['f'] = 'json';
+    }
+    return params;
   }
 
   Uri _buildUri(String endpoint, [Map<String, String>? additionalParams]) {
@@ -325,16 +333,17 @@ class NavidromeApi {
     };
   }
 
-  String getStreamUrl(String id, {bool transcode = false}) {
-    final params = _getAuthParams();
+  String getStreamUrl(String id, {bool transcode = false, String? suffix}) {
+    // Don't include f=json for binary stream endpoint
+    final params = _getAuthParams(includeFormat: false);
     params['id'] = id;
-    
+
     // Add transcoding parameters for mobile
     if (transcode) {
       params['format'] = 'mp3';
       params['maxBitRate'] = '320';
     }
-    
+
     final queryString = params.entries
         .map((e) => '${e.key}=${Uri.encodeComponent(e.value)}')
         .join('&');
@@ -343,7 +352,8 @@ class NavidromeApi {
 
   String getCoverArtUrl(String? id, {int size = 300}) {
     if (id == null) return '';
-    final params = _getAuthParams();
+    // Don't include f=json for binary image endpoint
+    final params = _getAuthParams(includeFormat: false);
     params['id'] = id;
     params['size'] = size.toString();
     final queryString = params.entries
