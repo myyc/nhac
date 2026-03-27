@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 
 class MacosWindowFrame extends StatefulWidget {
@@ -23,20 +23,21 @@ class _MacosWindowFrameState extends State<MacosWindowFrame> {
   void initState() {
     super.initState();
     if (Platform.isMacOS) {
-      _isMaximized = appWindow.isMaximized;
+      windowManager.isMaximized().then((v) {
+        if (mounted) setState(() => _isMaximized = v);
+      });
     }
   }
 
-  void _toggleMaximize() {
-    setState(() {
-      if (_isMaximized) {
-        appWindow.restore();
-        _isMaximized = false;
-      } else {
-        appWindow.maximize();
-        _isMaximized = true;
-      }
-    });
+  void _toggleMaximize() async {
+    if (_isMaximized) {
+      await windowManager.unmaximize();
+    } else {
+      await windowManager.maximize();
+    }
+    if (mounted) {
+      setState(() => _isMaximized = !_isMaximized);
+    }
   }
 
   void _showMenu(BuildContext context) {
@@ -68,9 +69,9 @@ class _MacosWindowFrameState extends State<MacosWindowFrame> {
     return Column(
       children: [
         // Permanent title bar for macOS
-        WindowTitleBarBox(
+        SizedBox(
+          height: 56,
           child: Container(
-            height: 56,
             color: theme.colorScheme.surface,
             child: Stack(
               children: [
@@ -78,7 +79,8 @@ class _MacosWindowFrameState extends State<MacosWindowFrame> {
                 Positioned.fill(
                   child: GestureDetector(
                     onDoubleTap: _toggleMaximize,
-                    child: MoveWindow(),
+                    onPanStart: (_) => windowManager.startDragging(),
+                    child: Container(color: Colors.transparent),
                   ),
                 ),
                 // Controls on the right
@@ -106,7 +108,7 @@ class _MacosWindowFrameState extends State<MacosWindowFrame> {
                         IconButton(
                           icon: const Icon(Icons.remove),
                           iconSize: 24,
-                          onPressed: () => appWindow.minimize(),
+                          onPressed: () => windowManager.minimize(),
                           hoverColor: theme.colorScheme.onSurface.withOpacity(0.08),
                         ),
                         // Maximize/Restore button
@@ -120,7 +122,7 @@ class _MacosWindowFrameState extends State<MacosWindowFrame> {
                         IconButton(
                           icon: const Icon(Icons.close),
                           iconSize: 24,
-                          onPressed: () => appWindow.close(),
+                          onPressed: () => windowManager.close(),
                           hoverColor: Colors.red.withOpacity(0.1),
                         ),
                         const SizedBox(width: 8), // Right padding

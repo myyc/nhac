@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import '../widgets/custom_window_frame.dart';
 import 'package:provider/provider.dart';
 import '../providers/cache_provider.dart';
@@ -95,7 +95,7 @@ class NowPlayingScreen extends StatelessWidget {
               children: [
                 Expanded(
                   child: (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
-                      ? MoveWindow(
+                      ? DragToMoveArea(
                           child: Center(
                             child: Container(
                               constraints: const BoxConstraints(maxWidth: 360, maxHeight: 360),

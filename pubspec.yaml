@@ -57,7 +57,7 @@ dependencies:
   collection: ^1.18.0
   
   # Window management for desktop
-  bitsdojo_window: ^0.1.6
+  window_manager: ^0.4.3
   
   # Database for caching
   sqflite: ^2.3.3

@@ -1,5 +1,7 @@
-import 'package:just_audio/just_audio.dart';
 import 'dart:async';
+import 'dart:io' show Platform;
+
+import 'package:just_audio/just_audio.dart';
 
 class AudioCacheEntry {
   final AudioPlayer player;
@@ -59,6 +61,11 @@ class AudioCacheManager {
   }
   
   Future<AudioPlayer?> preloadTrack(String songId, String streamUrl) async {
+    // Don't use just_audio preloading on Linux/Windows - we use MpvPlayer there
+    if (Platform.isLinux || Platform.isWindows) {
+      return null;
+    }
+
     // Check if already cached and not expired
     final existing = _cache[songId];
     if (existing != null && !existing.isExpired) {
@@ -96,6 +103,11 @@ class AudioCacheManager {
   }
   
   AudioPlayer? getCachedPlayer(String songId) {
+    // Don't use just_audio caching on Linux/Windows - we use MpvPlayer there
+    if (Platform.isLinux || Platform.isWindows) {
+      return null;
+    }
+
     final entry = _cache[songId];
     if (entry != null && !entry.isExpired) {
       return entry.player;

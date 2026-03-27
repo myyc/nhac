@@ -1,7 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import '../providers/auth_provider.dart';
 
 class LoginScreen extends StatefulWidget {
@@ -82,34 +82,35 @@ class _LoginScreenState extends State<LoginScreen> {
     
     // For macOS, only provide draggable area without visible controls
     if (Platform.isMacOS) {
-      return WindowTitleBarBox(
+      return GestureDetector(
+        onPanStart: (_) => windowManager.startDragging(),
         child: Container(
           height: 48,
           color: Colors.transparent,
-          child: MoveWindow(),
         ),
       );
     }
-    
+
     // For Windows and Linux, show the close button
-    return WindowTitleBarBox(
-      child: Container(
-        height: 48,
-        color: Theme.of(context).colorScheme.surface,
-        child: Row(
-          children: [
-            Expanded(
-              child: MoveWindow(),
+    return Container(
+      height: 48,
+      color: Theme.of(context).colorScheme.surface,
+      child: Row(
+        children: [
+          Expanded(
+            child: GestureDetector(
+              onPanStart: (_) => windowManager.startDragging(),
+              child: Container(color: Colors.transparent),
             ),
-            IconButton(
-              icon: const Icon(Icons.close),
-              onPressed: () => appWindow.close(),
-              iconSize: 18,
-              color: Colors.red,
-            ),
-            const SizedBox(width: 8),
-          ],
-        ),
+          ),
+          IconButton(
+            icon: const Icon(Icons.close),
+            onPressed: () => windowManager.close(),
+            iconSize: 18,
+            color: Colors.red,
+          ),
+          const SizedBox(width: 8),
+        ],
       ),
     );
   }

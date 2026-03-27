@@ -38,15 +38,14 @@ modules:
     buildsystem: meson
     sources:
       - type: archive
-        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.4.9/pipewire-1.4.9.tar.gz
-        sha256: 8066a7b220069e4c6e3b02bd2b6ea303bba66df255023c07c99323449ba8fe3c
+        url: https://gitlab.freedesktop.org/pipewire/pipewire/-/archive/1.6.2/pipewire-1.6.2.tar.gz
+        sha256: 2014c187fccdd6d245585be4eda7dabd781dcddd921604c40ab015bba6cb042d
     config-opts:
       - --libdir=lib
       - -Dalsa=enabled
       - -Djack=disabled
       - -Dpipewire-alsa=enabled
       - -Dgstreamer=disabled
-      - -Dsystemd=disabled
       - -Ddocs=disabled
       - -Dman=disabled
       - -Dexamples=disabled
@@ -60,8 +59,8 @@ modules:
     buildsystem: autotools
     sources:
       - type: archive
-        url: https://www.sqlite.org/2025/sqlite-autoconf-3500400.tar.gz
-        sha256: a3db587a1b92ee5ddac2f66b3edb41b26f9c867275782d46c3a088977d6a5b18
+        url: https://sqlite.org/2026/sqlite-autoconf-3510300.tar.gz
+        sha256: 81f5be397049b0cae1b167f2225af7646fc0f82e4a9b3c48c9ea3a533e21d77a
     config-opts:
       - --enable-shared
       - --disable-static
@@ -75,11 +74,11 @@ modules:
         url: https://files.pythonhosted.org/packages/62/a1/3d680cbfd5f4b8f15abc1d571870c5fc3e594bb582bc3b64ea099db13e56/jinja2-3.1.6-py3-none-any.whl
         sha256: 85ece4451f492d0c13c5dd7c13a64681a86afae63a5f347908daf103ce6d2f67
       - type: file
-        url: https://files.pythonhosted.org/packages/0c/91/96cf928db8236f1bfab6ce15ad070dfdd02ed88261c2afafd4b43575e9e9/MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
-        sha256: 15ab75ef81add55874e7ab7055e9c397312385bd9ced94920f2802310c930396
+        url: https://files.pythonhosted.org/packages/a9/21/9b05698b46f218fc0e118e1f8168395c65c8a2c750ae2bab54fc4bd4e0e8/markupsafe-3.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
+        sha256: ccfcd093f13f0f0b7fdd0f198b90053bf7b2f02a3927a30e63f3ccc9df56b676
     build-commands:
       - python3 -m venv /app/jinja2-venv
-      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . MarkupSafe-3.0.2-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl
+      - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . markupsafe-3.0.3-cp313-cp313-manylinux2014_x86_64.manylinux_2_17_x86_64.manylinux_2_28_x86_64.whl
       - /app/jinja2-venv/bin/pip install --no-deps --no-index --find-links . jinja2-3.1.6-py3-none-any.whl
 
   # libplacebo dependency for mpv
@@ -87,8 +86,8 @@ modules:
     buildsystem: meson
     sources:
       - type: archive
-        url: https://github.com/haasn/libplacebo/archive/refs/tags/v7.351.0.tar.gz
-        sha256: 716954501d9b76e6906fddda66febc5886493d0673dd265ec1e6e52f4e5cd7c6
+        url: https://github.com/haasn/libplacebo/archive/refs/tags/v7.360.1.tar.gz
+        sha256: d05fdf90bea2f629eaa2d115e909fd356388ac639e54f77b87a018a6d76224bd
     build-options:
       env:
         PATH: "/app/jinja2-venv/bin:/usr/bin:/bin"
