@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
 import '../providers/cache_provider.dart';
@@ -274,7 +274,7 @@ class _HomeViewState extends State<HomeView> {
 
         // Wrap the entire ListView with MoveWindow for desktop
         if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-          listView = MoveWindow(child: listView);
+          listView = DragToMoveArea(child: listView);
         }
 
         // On mobile, use PullToSearch only (no refresh - search replaces it)

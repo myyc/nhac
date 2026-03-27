@@ -39,8 +39,8 @@ if [ -f "dev.myyc.nhac.yaml" ] && command -v flatpak-builder &> /dev/null; then
     echo "==================================="
     
     # Ensure Flatpak runtime is installed
-    flatpak install --user -y flathub org.freedesktop.Platform//24.08 || true
-    flatpak install --user -y flathub org.freedesktop.Sdk//24.08 || true
+    flatpak install --user -y flathub org.freedesktop.Platform//25.08 || true
+    flatpak install --user -y flathub org.freedesktop.Sdk//25.08 || true
     
     # Clean any stale cache and build Flatpak
     rm -rf .flatpak-builder build-dir repo

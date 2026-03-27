@@ -1,55 +1,50 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 
 class CustomTitleBar extends StatefulWidget implements PreferredSizeWidget {
   final Widget? title;
   final List<Widget>? actions;
   final Widget? leading;
-  
+
   const CustomTitleBar({
     super.key,
     this.title,
     this.actions,
     this.leading,
   });
-  
+
   @override
   Size get preferredSize => const Size.fromHeight(48);
-  
+
   @override
   State<CustomTitleBar> createState() => _CustomTitleBarState();
 }
 
 class _CustomTitleBarState extends State<CustomTitleBar> {
   bool _isMaximized = false;
-  
+
   @override
   void initState() {
     super.initState();
     if (Platform.isLinux || Platform.isWindows || Platform.isMacOS) {
-      // Check initial maximized state
-      _isMaximized = appWindow.isMaximized;
+      windowManager.isMaximized().then((v) {
+        if (mounted) setState(() => _isMaximized = v);
+      });
     }
   }
-  
-  @override
-  void dispose() {
-    super.dispose();
+
+  void _toggleMaximize() async {
+    if (_isMaximized) {
+      await windowManager.unmaximize();
+    } else {
+      await windowManager.maximize();
+    }
+    if (mounted) {
+      setState(() => _isMaximized = !_isMaximized);
+    }
   }
-  
-  void _toggleMaximize() {
-    setState(() {
-      if (_isMaximized) {
-        appWindow.restore();
-        _isMaximized = false;
-      } else {
-        appWindow.maximize();
-        _isMaximized = true;
-      }
-    });
-  }
-  
+
   @override
   Widget build(BuildContext context) {
     if (!Platform.isLinux && !Platform.isWindows && !Platform.isMacOS) {
@@ -59,10 +54,11 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
         leading: widget.leading,
       );
     }
-    
+
     final theme = Theme.of(context);
-    
-    return WindowTitleBarBox(
+
+    return SizedBox(
+      height: 48,
       child: Material(
         color: theme.colorScheme.surface,
         child: Container(
@@ -79,31 +75,31 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
             children: [
               if (widget.leading != null) widget.leading!,
               if (widget.leading == null) const SizedBox(width: 16),
-              if (widget.title != null) 
+              if (widget.title != null)
                 Expanded(
                   child: GestureDetector(
                     onDoubleTap: _toggleMaximize,
-                    child: MoveWindow(
-                      child: DefaultTextStyle(
-                        style: theme.textTheme.titleLarge!,
-                        child: widget.title!,
-                      ),
+                    onPanStart: (_) => windowManager.startDragging(),
+                    child: DefaultTextStyle(
+                      style: theme.textTheme.titleLarge!,
+                      child: widget.title!,
                     ),
                   ),
                 ),
-              if (widget.title == null) 
+              if (widget.title == null)
                 Expanded(
                   child: GestureDetector(
                     onDoubleTap: _toggleMaximize,
-                    child: MoveWindow(),
+                    onPanStart: (_) => windowManager.startDragging(),
+                    child: Container(color: Colors.transparent),
                   ),
                 ),
               if (widget.actions != null) ...widget.actions!,
-              
+
               // Window control buttons
               _WindowButton(
                 icon: Icons.remove,
-                onPressed: () => appWindow.minimize(),
+                onPressed: () => windowManager.minimize(),
                 hoverColor: theme.colorScheme.onSurface.withOpacity(0.08),
               ),
               _WindowButton(
@@ -113,7 +109,7 @@ class _CustomTitleBarState extends State<CustomTitleBar> {
               ),
               _WindowButton(
                 icon: Icons.close,
-                onPressed: () => appWindow.close(),
+                onPressed: () => windowManager.close(),
                 hoverColor: Colors.red.withOpacity(0.1),
                 iconColor: Colors.red,
               ),
@@ -131,25 +127,25 @@ class _WindowButton extends StatefulWidget {
   final VoidCallback onPressed;
   final Color? hoverColor;
   final Color? iconColor;
-  
+
   const _WindowButton({
     required this.icon,
     required this.onPressed,
     this.hoverColor,
     this.iconColor,
   });
-  
+
   @override
   State<_WindowButton> createState() => _WindowButtonState();
 }
 
 class _WindowButtonState extends State<_WindowButton> {
   bool _isHovering = false;
-  
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    
+
     return MouseRegion(
       onEnter: (_) => setState(() => _isHovering = true),
       onExit: (_) => setState(() => _isHovering = false),
@@ -159,7 +155,7 @@ class _WindowButtonState extends State<_WindowButton> {
           width: 46,
           height: 48,
           decoration: BoxDecoration(
-            color: _isHovering 
+            color: _isHovering
                 ? (widget.hoverColor ?? theme.colorScheme.onSurface.withOpacity(0.08))
                 : Colors.transparent,
           ),

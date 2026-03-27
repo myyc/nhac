@@ -39,6 +39,7 @@ class PlayerProvider extends ChangeNotifier {
   StreamSubscription? _mpvDurationSubscription;
   DateTime? _lastPreloadCheck;
   DateTime? _lastPositionUpdate; // For throttling position updates
+  DateTime? _lastPlayQueueCall; // For debouncing rapid playQueue calls
   bool _pendingNotification = false; // For batching notifications
 
   /// Check if we should use MpvPlayer (Linux/Windows with mpv available)
@@ -654,7 +655,16 @@ class PlayerProvider extends ChangeNotifier {
 
   Future<void> playQueue(List<Song> songs, {int startIndex = 0}) async {
     if (_api == null || songs.isEmpty) return;
-    
+
+    // Debounce rapid calls (e.g., from GTK input issues)
+    final now = DateTime.now();
+    if (_lastPlayQueueCall != null &&
+        now.difference(_lastPlayQueueCall!) < const Duration(milliseconds: 300)) {
+      if (kDebugMode) print('[PlayerProvider] playQueue debounced');
+      return;
+    }
+    _lastPlayQueueCall = now;
+
     _queue = songs;
     _currentIndex = startIndex;
     _currentSong = songs[startIndex];

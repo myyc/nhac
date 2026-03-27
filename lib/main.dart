@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:audio_service/audio_service.dart';
 import 'package:just_audio/just_audio.dart';
 import 'audio/mpv/mpv_player.dart';
@@ -116,8 +116,10 @@ void main() async {
   // (or as fallback if mpv init failed)
   globalAudioPlayer = AudioPlayer();
   
-  // Initialize audio service for Android and Linux
-  if (Platform.isAndroid || Platform.isLinux) {
+  // Initialize audio service for Android (and Linux only if MpvPlayer failed)
+  // On Linux with MpvPlayer, we use native notifications instead of audio_service
+  // This avoids the media_kit "osc property not found" errors from just_audio
+  if (Platform.isAndroid || (Platform.isLinux && globalMpvPlayer == null)) {
     // Create a dummy API instance that will be replaced later
     final dummyApi = NavidromeApi(
       baseUrl: 'http://localhost',
@@ -148,19 +150,22 @@ void main() async {
     audioHandler = null;
   }
   
-  // Window initialization is handled by bitsdojo_window below
-  
-  runApp(const NhacApp());
-  
+  // Window initialization
   if (Platform.isWindows || Platform.isLinux || Platform.isMacOS) {
-    doWhenWindowReady(() {
-      const initialSize = Size(1200, 800);
-      appWindow.minSize = const Size(600, 400);
-      appWindow.size = initialSize;
-      appWindow.alignment = Alignment.center;
-      appWindow.show();
+    await windowManager.ensureInitialized();
+    const windowOptions = WindowOptions(
+      size: Size(1200, 800),
+      minimumSize: Size(600, 400),
+      center: true,
+      titleBarStyle: TitleBarStyle.hidden,
+    );
+    windowManager.waitUntilReadyToShow(windowOptions, () async {
+      await windowManager.show();
+      await windowManager.focus();
     });
   }
+
+  runApp(const NhacApp());
 }
 
 class NhacApp extends StatelessWidget {
@@ -330,10 +335,13 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
     debugPrint('[Main] Cleaning up before exit...');
 
     // Stop the global audio player immediately to prevent hanging
-    try {
-      globalAudioPlayer.stop();
-    } catch (e) {
-      debugPrint('[Main] Error stopping audio: $e');
+    // Skip on Linux/Windows where we use MpvPlayer (just_audio triggers media_kit errors)
+    if (!Platform.isLinux && !Platform.isWindows) {
+      try {
+        globalAudioPlayer.stop();
+      } catch (e) {
+        debugPrint('[Main] Error stopping audio: $e');
+      }
     }
 
     // Cancel any background tasks

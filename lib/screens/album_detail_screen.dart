@@ -3,7 +3,7 @@ import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/player_provider.dart';
@@ -291,7 +291,7 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                           ? SizedBox(
                               height: 300,
                               width: double.infinity,
-                              child: MoveWindow(
+                              child: DragToMoveArea(
                                 child: Stack(
                                   fit: StackFit.expand,
                                   children: [

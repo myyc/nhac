@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
 import '../widgets/cached_cover_image.dart';
 import 'dart:io' show Platform;
@@ -273,7 +273,7 @@ class _LibraryScreenState extends State<LibraryScreen> {
         Widget content = PullToRefresh(
           onRefresh: _handleRefresh,
           child: (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
-              ? MoveWindow(child: gridView)
+              ? DragToMoveArea(child: gridView)
               : gridView,
         );
 

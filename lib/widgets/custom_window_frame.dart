@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:bitsdojo_window/bitsdojo_window.dart';
+import 'package:window_manager/window_manager.dart';
 import 'package:provider/provider.dart';
 import 'dart:io' show Platform;
 import '../providers/auth_provider.dart';
@@ -88,11 +88,9 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
                     bottomLeft: Radius.circular(10),
                   ),
                 ),
-                child: WindowTitleBarBox(
-                  child: WindowButtons(
-                    showMenuButton: widget.showMenuButton,
-                    onMenuPressed: widget.showMenuButton ? _showMenu : null,
-                  ),
+                child: WindowButtons(
+                  showMenuButton: widget.showMenuButton,
+                  onMenuPressed: widget.showMenuButton ? _showMenu : null,
                 ),
               ),
             ),
@@ -104,11 +102,11 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
           top: 0,
           left: 56, // Leave space for back button
           right: widget.showMenuButton ? 96 : 56, // Leave space for window buttons
-          child: WindowTitleBarBox(
+          child: GestureDetector(
+            onPanStart: (_) => windowManager.startDragging(),
             child: Container(
               height: 56, // Same height as the app bar
               color: Colors.transparent,
-              child: MoveWindow(),
             ),
           ),
         ),
@@ -159,7 +157,7 @@ class _WindowButtonsState extends State<WindowButtons> {
           IconButton(
             icon: Icon(Icons.close),
             iconSize: 24,
-            onPressed: () => appWindow.close(),
+            onPressed: () => windowManager.close(),
             hoverColor: Colors.red.withOpacity(0.1),
           ),
           const SizedBox(width: 8), // Add right padding
@@ -168,5 +166,3 @@ class _WindowButtonsState extends State<WindowButtons> {
     );
   }
 }
-
-// Removed _WindowButton class as we now use standard IconButton
