@@ -46,7 +46,6 @@ modules:
       - -Djack=disabled
       - -Dpipewire-alsa=enabled
       - -Dgstreamer=disabled
-      - -Dsystemd=disabled
       - -Ddocs=disabled
       - -Dman=disabled
       - -Dexamples=disabled
