@@ -36,6 +36,7 @@ class AlbumDetailScreen extends StatefulWidget {
 class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   List<Song>? _songs;
   bool _isLoading = true;
+  bool _isScanning = false;
   String? _error;
   AlbumDownloadProgress? _albumDownloadProgress;
   int _downloadedCount = 0;
@@ -129,6 +130,11 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         if (kDebugMode) {
           print('[AlbumDetailScreen] UI updated successfully');
         }
+
+        // If no songs found and we're online, trigger a scan to pick up new tracks
+        if (songs.isEmpty && !networkProvider.isOffline && networkProvider.isServerReachable) {
+          _scanAndRefetch();
+        }
       }
     } catch (e) {
       if (kDebugMode) {
@@ -138,6 +144,68 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
         setState(() {
           _error = e.toString();
           _isLoading = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _scanAndRefetch() async {
+    if (!mounted) return;
+    final api = context.read<AuthProvider>().api;
+    if (api == null) return;
+    final cacheProvider = context.read<CacheProvider>();
+
+    setState(() {
+      _isScanning = true;
+    });
+
+    try {
+      if (kDebugMode) {
+        print('[AlbumDetailScreen] No tracks found, triggering Navidrome scan...');
+      }
+      await api.startScan();
+
+      // Poll scan status until complete (timeout after 60 seconds)
+      const pollInterval = Duration(seconds: 3);
+      const timeout = Duration(seconds: 60);
+      final deadline = DateTime.now().add(timeout);
+
+      while (mounted && DateTime.now().isBefore(deadline)) {
+        await Future.delayed(pollInterval);
+        final status = await api.getScanStatus();
+        final isScanning = status['scanning'] as bool? ?? false;
+
+        if (!isScanning) {
+          if (kDebugMode) {
+            print('[AlbumDetailScreen] Scan complete, re-fetching tracks...');
+          }
+          break;
+        }
+      }
+
+      // Re-fetch songs with force refresh
+      if (mounted) {
+        final songs = await cacheProvider.getSongsByAlbum(
+          widget.album.id,
+          forceRefresh: true,
+        );
+        if (mounted) {
+          setState(() {
+            _songs = songs;
+            _isScanning = false;
+          });
+          if (kDebugMode) {
+            print('[AlbumDetailScreen] After scan: found ${songs.length} tracks');
+          }
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[AlbumDetailScreen] Scan error: $e');
+      }
+      if (mounted) {
+        setState(() {
+          _isScanning = false;
         });
       }
     }
@@ -455,6 +523,28 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
                       ),
                     ),
                       
+                      // Scanning indicator
+                      if (_isScanning && (_songs == null || _songs!.isEmpty))
+                        Padding(
+                          padding: const EdgeInsets.symmetric(vertical: 32),
+                          child: Column(
+                            children: [
+                              const SizedBox(
+                                width: 24,
+                                height: 24,
+                                child: CircularProgressIndicator(strokeWidth: 2),
+                              ),
+                              const SizedBox(height: 12),
+                              Text(
+                                'Scanning for new tracks...',
+                                style: Theme.of(context).textTheme.bodyMedium?.copyWith(
+                                  color: Theme.of(context).colorScheme.onSurface.withOpacity(0.6),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+
                       // Song list
                       if (_songs != null)
                         Consumer<PlayerProvider>(
