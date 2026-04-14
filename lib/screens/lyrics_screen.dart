@@ -252,10 +252,13 @@ class _LyricsScreenState extends State<LyricsScreen> {
           content = InkWell(
             borderRadius: BorderRadius.circular(8),
             onTap: () async {
-              await player.seek(line.start!);
+              // Start playback first if paused, then seek. just_audio on
+              // Android discards a seek issued while the source is idle —
+              // play() re-prepares from 0 and the seek would be lost.
               if (!player.isPlaying) {
                 await player.play();
               }
+              await player.seek(line.start!);
             },
             child: content,
           );

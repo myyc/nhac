@@ -888,6 +888,8 @@ class PlayerProvider extends ChangeNotifier {
         }
       }
       await mpv.play();
+    } else if (Platform.isAndroid && app_main.audioHandler != null) {
+      await app_main.audioHandler!.play();
     } else {
       await _audioPlayer.play();
     }
@@ -920,6 +922,8 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> pause() async {
     if (_useMpv) {
       await app_main.globalMpvPlayer!.pause();
+    } else if (Platform.isAndroid && app_main.audioHandler != null) {
+      await app_main.audioHandler!.pause();
     } else {
       await _audioPlayer.pause();
     }
@@ -1237,6 +1241,10 @@ class PlayerProvider extends ChangeNotifier {
   Future<void> seek(Duration position) async {
     if (_useMpv) {
       await app_main.globalMpvPlayer!.seek(position);
+    } else if (Platform.isAndroid && app_main.audioHandler != null) {
+      // Route through audio_service so the media session, notification and
+      // lockscreen scrubber all stay in sync with the player.
+      await app_main.audioHandler!.seek(position);
     } else {
       await _audioPlayer.seek(position);
     }
