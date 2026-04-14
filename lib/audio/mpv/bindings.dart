@@ -324,43 +324,17 @@ class LibMpv {
         .asFunction();
   }
 
-  /// Load libmpv from system or custom path
-  static LibMpv? load([String? path]) {
-    final lib = _loadLibrary(path);
-    if (lib == null) return null;
-    return LibMpv._(lib);
-  }
-
-  static DynamicLibrary? _loadLibrary(String? customPath) {
-    // Try custom path first
-    if (customPath != null) {
-      try {
-        return DynamicLibrary.open(customPath);
-      } catch (_) {}
+  /// Resolve libmpv symbols from the running process. The host runner is
+  /// linked against libmpv at build time, so the dynamic linker has already
+  /// loaded libmpv.so.2 by the time Dart code runs.
+  static LibMpv? load() {
+    try {
+      return LibMpv._(DynamicLibrary.process());
+    } catch (e) {
+      // ignore: avoid_print
+      print('[LibMpv] DynamicLibrary.process() failed: $e');
+      return null;
     }
-
-    // Try environment variable
-    final envPath = Platform.environment['LIBMPV_LIBRARY_PATH'];
-    if (envPath != null) {
-      try {
-        return DynamicLibrary.open(envPath);
-      } catch (_) {}
-    }
-
-    // Platform-specific library names
-    final names = Platform.isWindows
-        ? ['libmpv-2.dll', 'mpv-2.dll', 'mpv-1.dll']
-        : Platform.isLinux
-            ? ['libmpv.so', 'libmpv.so.2', 'libmpv.so.1']
-            : <String>[];
-
-    for (final name in names) {
-      try {
-        return DynamicLibrary.open(name);
-      } catch (_) {}
-    }
-
-    return null;
   }
 
   /// Get error message for error code

@@ -83,7 +83,6 @@ class CacheProvider extends ChangeNotifier {
     await Future.delayed(const Duration(seconds: 3));
 
     if (_libraryScanService != null) {
-      if (kDebugMode) print('[CacheProvider] Initiating background library scan');
       _libraryScanService!.startBackgroundScan();
     }
   }
@@ -117,8 +116,6 @@ class CacheProvider extends ChangeNotifier {
     // Suspend child services
     _libraryScanService?.stopPeriodicScanning();
     _aggressiveCacheService?.suspend();
-
-    if (kDebugMode) print('[CacheProvider] Suspended all background tasks');
   }
 
   /// Resume all background sync tasks
@@ -132,8 +129,6 @@ class CacheProvider extends ChangeNotifier {
     // Resume child services
     _libraryScanService?.resumePeriodicScanning();
     _aggressiveCacheService?.resume();
-
-    if (kDebugMode) print('[CacheProvider] Resumed all background tasks');
   }
   
   // Manual library scan (can be triggered by user)

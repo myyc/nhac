@@ -18,13 +18,6 @@ class PerformanceConfig {
 
   /// Initialize configuration from environment variables
   static void initialize() {
-    if (kDebugMode) {
-      print('[PerformanceConfig] Initializing with defaults:');
-      print('  - enableGaplessPlayback: $enableGaplessPlayback');
-      print('  - positionUpdateInterval: $positionUpdateInterval ms');
-      print('  - enableAggressiveCaching: $enableAggressiveCaching');
-    }
-
     // Allow overriding with environment variables (useful for debugging)
     if (const String.fromEnvironment('ENABLE_GAPLESS') == 'true') {
       enableGaplessPlayback = true;

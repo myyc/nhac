@@ -55,3 +55,7 @@ repo/
 
 # Android build artifacts
 android/build/
+
+# Local backup of release signing material (mirrors the GitHub Secrets used
+# by CI). Lose these and you can never upgrade installed APKs in place.
+/secrets/

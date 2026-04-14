@@ -71,7 +71,6 @@ class NetworkProvider extends ChangeNotifier {
   }
   
   Future<void> _initialize() async {
-    debugPrint('[NetworkProvider] Initializing...');
 
     // Check if running in Flatpak or other container without D-Bus access
     _isFlatpak = Platform.isLinux &&
@@ -79,14 +78,11 @@ class NetworkProvider extends ChangeNotifier {
                    File('/.flatpak-info').existsSync() ||
                    Platform.environment['container'] != null || // Toolbx/Podman
                    !File('/var/run/dbus/system_bus_socket').existsSync());
-    debugPrint('[NetworkProvider] Running in container/no D-Bus: $_isFlatpak');
-
     // Check initial connectivity
     await _checkConnectivity();
 
     // Skip connectivity_plus stream in containers - it requires D-Bus
     if (_isFlatpak) {
-      debugPrint('[NetworkProvider] Container detected - skipping connectivity_plus stream');
       // Set up periodic internet check instead
       _startPeriodicConnectivityCheck();
       return;
@@ -123,7 +119,6 @@ class NetworkProvider extends ChangeNotifier {
   Future<void> _checkConnectivity() async {
     // In containers without D-Bus, skip connectivity_plus and check directly
     if (_isFlatpak) {
-      debugPrint('[NetworkProvider] Container detected - checking internet directly');
       final hasInternet = await _checkInternetAccess();
       if (hasInternet) {
         _handleConnectivityChange([ConnectivityResult.wifi]);
@@ -170,8 +165,7 @@ class NetworkProvider extends ChangeNotifier {
 
       // Any successful response means we have internet
       return response.statusCode >= 200 && response.statusCode < 300;
-    } catch (e) {
-      debugPrint('[NetworkProvider] Internet check failed: $e');
+    } catch (_) {
       return false;
     }
   }
@@ -208,14 +202,12 @@ class NetworkProvider extends ChangeNotifier {
   /// Suspend health check timer (for battery optimization when idle)
   void suspendHealthChecks() {
     _stopServerHealthMonitoring();
-    debugPrint('[NetworkProvider] Health checks suspended');
   }
 
   /// Resume health check timer
   void resumeHealthChecks() {
     if (_api != null && !_isOffline) {
       _startServerHealthMonitoring();
-      debugPrint('[NetworkProvider] Health checks resumed');
     }
   }
 
@@ -230,7 +222,6 @@ class NetworkProvider extends ChangeNotifier {
         _connectionState = ConnectionState.connected;
         _connectionEventController.add(ConnectionEvent.serverRestored);
         _consecutiveFailures = 0;
-        debugPrint('[NetworkProvider] Server restored');
         notifyListeners();
       } else if (!reachable && _serverReachable) {
         // Require 2 consecutive failures before marking unreachable
@@ -331,7 +322,6 @@ class NetworkProvider extends ChangeNotifier {
       _serverReachable = true;
       _connectionState = ConnectionState.connected;
       _connectionEventController.add(ConnectionEvent.reconnected);
-      debugPrint('[NetworkProvider] Network restored - back online');
       _startServerHealthMonitoring();
       notifyListeners();
     }
@@ -340,8 +330,6 @@ class NetworkProvider extends ChangeNotifier {
   void _handleConnectivityChange(List<ConnectivityResult> results) {
     NetworkType newType;
     bool offline = false;
-
-    debugPrint('[NetworkProvider] Handling connectivity change: $results');
 
     if (results.isEmpty || results.contains(ConnectivityResult.none)) {
       newType = NetworkType.offline;
@@ -364,8 +352,6 @@ class NetworkProvider extends ChangeNotifier {
       final wasOffline = _isOffline;
       _currentNetworkType = newType;
       _isOffline = offline;
-
-      debugPrint('[NetworkProvider] Network changed: $oldType -> $newType (offline: $wasOffline -> $offline)');
 
       // Emit connection events and trigger reconnection
       if (wasOffline && !offline) {

@@ -50,10 +50,6 @@ class LibraryScanService {
     // Use custom interval or default
     final interval = customInterval ?? _normalScanInterval;
     
-    if (kDebugMode) {
-      print('[LibraryScan] Starting periodic scanning every ${interval.inMinutes} minutes');
-    }
-    
     _periodicScanTimer = Timer.periodic(interval, (_) {
       _performPeriodicScan();
     });
@@ -65,13 +61,11 @@ class LibraryScanService {
     _periodicScanTimer = null;
     _statusCheckTimer?.cancel();
     _statusCheckTimer = null;
-    if (kDebugMode) print('[LibraryScan] Stopped periodic scanning');
   }
 
   // Resume periodic scanning (for battery optimization)
   void resumePeriodicScanning() {
     _startPeriodicScanning();
-    if (kDebugMode) print('[LibraryScan] Resumed periodic scanning');
   }
   
   // Adjust scan interval based on network conditions
@@ -110,7 +104,6 @@ class LibraryScanService {
       return;
     }
 
-    if (kDebugMode) print('[LibraryScan] Starting periodic scan');
     await startBackgroundScan();
   }
   
@@ -135,7 +128,6 @@ class LibraryScanService {
       await _captureLibraryState();
       
       // Start the scan
-      if (kDebugMode) print('[LibraryScan] Starting library scan...');
       await api.startScan();
       
       // Start monitoring scan status
@@ -164,9 +156,6 @@ class LibraryScanService {
         _lastAlbumIds = albums.take(100).map((a) => a.id).toList();
       }
       
-      if (kDebugMode) {
-        print('[LibraryScan] Captured state: $_lastAlbumCount albums, newest: $_lastNewestAlbumId');
-      }
     } catch (e) {
       if (kDebugMode) print('[LibraryScan] Error capturing library state: $e');
     }
@@ -181,13 +170,8 @@ class LibraryScanService {
         final status = await api.getScanStatus();
         final isScanning = status['scanning'] as bool? ?? false;
         
-        if (kDebugMode) {
-          print('[LibraryScan] Status: scanning=$isScanning, count=${status['count']}');
-        }
-        
         if (!isScanning && _isScanning) {
           // Scan just completed
-          if (kDebugMode) print('[LibraryScan] Scan completed, checking for changes...');
           _isScanning = false;
           _statusCheckTimer?.cancel();
           
@@ -219,36 +203,41 @@ class LibraryScanService {
         return;
       }
       
-      // Check if the newest album has changed
+      // Count new albums by walking the list until we hit the previously-known
+      // newest. If we don't find it (album removed/reordered, or no prior state),
+      // we can't infer "N new albums" — bail out instead of falsely reporting all 50.
       final currentNewestId = newestAlbums.first.id;
-      bool hasNewAlbums = _lastNewestAlbumId != null && _lastNewestAlbumId != currentNewestId;
-      
-      // Count new albums since last check
       int newAlbumCount = 0;
-      if (hasNewAlbums && _lastNewestAlbumId != null) {
+      bool hasNewAlbums = false;
+      if (_lastNewestAlbumId != null && _lastNewestAlbumId != currentNewestId) {
         for (final album in newestAlbums) {
-          if (album.id == _lastNewestAlbumId) break;
+          if (album.id == _lastNewestAlbumId) {
+            hasNewAlbums = true;
+            break;
+          }
           newAlbumCount++;
         }
+        if (!hasNewAlbums) {
+          // Stale reference — don't treat the entire window as new.
+          newAlbumCount = 0;
+        }
       }
-      
-      // Check total album count change
+
+      // Check total album count change. getAlbumList2 caps at 500 per page, so
+      // a library larger than 500 will produce a misleading negative diff. Only
+      // trust the diff when both sides were below the cap.
       final allAlbums = await api.getAlbumList2(
-        type: 'alphabeticalByName', 
-        size: 500
+        type: 'alphabeticalByName',
+        size: 500,
       );
       final currentAlbumCount = allAlbums.length;
-      final albumCountDiff = (_lastAlbumCount != null) 
-        ? currentAlbumCount - _lastAlbumCount! 
-        : 0;
-      
-      if (kDebugMode) {
-        print('[LibraryScan] Changes detected:');
-        print('  - New albums: $newAlbumCount');
-        print('  - Total album count change: $albumCountDiff');
-        print('  - Newest album changed: $hasNewAlbums');
-      }
-      
+      final bothBelowCap = currentAlbumCount < 500 &&
+          _lastAlbumCount != null &&
+          _lastAlbumCount! < 500;
+      final albumCountDiff = bothBelowCap
+          ? currentAlbumCount - _lastAlbumCount!
+          : 0;
+
       // Update cached albums in database
       if (hasNewAlbums || albumCountDiff > 0) {
         // Update database with new albums
@@ -275,11 +264,6 @@ class LibraryScanService {
           newestAlbums: newestAlbums.take(10).toList(),
         ));
         
-        if (kDebugMode) {
-          print('[LibraryScan] Library changes notified to listeners');
-        }
-      } else {
-        if (kDebugMode) print('[LibraryScan] No changes detected in library');
       }
       
       // Update state for next comparison

@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import '../models/artist.dart';
 import '../models/album.dart';
 import '../models/song.dart';
+import '../models/lyrics.dart';
 import '../providers/network_provider.dart';
 import 'auth_service.dart' show LoginResult;
 
@@ -375,6 +376,57 @@ class NavidromeApi {
 
   Future<void> unstar(String id) async {
     await _request('unstar', {'id': id});
+  }
+
+  /// Fetch lyrics for a song via OpenSubsonic's `getLyricsBySongId`,
+  /// which returns structured/synced lyrics when available. Falls back to
+  /// legacy `getLyrics(artist, title)` for plain text. Returns null if none.
+  Future<Lyrics?> getLyricsBySongId(
+    String id, {
+    String? artist,
+    String? title,
+  }) async {
+    try {
+      final response = await _request('getLyricsBySongId', {'id': id});
+      final list = response['lyricsList'];
+      if (list is Map && list['structuredLyrics'] is List) {
+        final entries = list['structuredLyrics'] as List;
+        if (entries.isNotEmpty) {
+          Map<String, dynamic>? chosen;
+          for (final e in entries) {
+            if (e is Map && e['synced'] == true) {
+              chosen = Map<String, dynamic>.from(e);
+              break;
+            }
+          }
+          chosen ??= Map<String, dynamic>.from(entries.first as Map);
+          final lyrics = Lyrics.fromStructured(chosen);
+          if (!lyrics.isEmpty) return lyrics;
+        }
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[NavidromeApi] getLyricsBySongId failed, falling back: $e');
+      }
+    }
+
+    if (artist == null || title == null) return null;
+    try {
+      final response = await _request('getLyrics', {
+        'artist': artist,
+        'title': title,
+      });
+      final raw = response['lyrics'];
+      if (raw is Map) {
+        final lyrics = Lyrics.fromPlain(Map<String, dynamic>.from(raw));
+        if (!lyrics.isEmpty) return lyrics;
+      }
+    } catch (e) {
+      if (kDebugMode) {
+        print('[NavidromeApi] getLyrics fallback failed: $e');
+      }
+    }
+    return null;
   }
 
   // Library scanning methods (Subsonic API v1.15.0+)

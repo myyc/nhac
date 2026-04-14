@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:flutter/foundation.dart';
 import 'package:provider/provider.dart';
 import '../providers/network_provider.dart';
 
@@ -10,11 +9,6 @@ class OfflineIndicator extends StatelessWidget {
   Widget build(BuildContext context) {
     return Consumer<NetworkProvider>(
       builder: (context, networkProvider, child) {
-        // Debug logging
-        if (kDebugMode) {
-          print('[OfflineIndicator] Building - isOffline: ${networkProvider.isOffline}');
-        }
-
         if (!networkProvider.isOffline) {
           return const SizedBox.shrink();
         }

@@ -50,14 +50,12 @@ class AudioCacheManager {
     _isSuspended = true;
     _cleanupTimer?.cancel();
     _cleanupTimer = null;
-    print('[AudioCache] Suspended - cleanup timer stopped');
   }
 
   /// Resume cleanup timer
   void resume() {
     _isSuspended = false;
     initialize();
-    print('[AudioCache] Resumed - cleanup timer restarted');
   }
   
   Future<AudioPlayer?> preloadTrack(String songId, String streamUrl) async {

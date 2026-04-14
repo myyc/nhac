@@ -62,6 +62,20 @@
   </provides>
   
   <releases>
+    <release version="1.2.0" date="2026-04-14">
+      <description>
+        <p>Feature release</p>
+        <ul>
+          <li>Synced lyrics view (tap album cover in the player)</li>
+          <li>Linux: window resize handles for the custom title bar</li>
+          <li>Link libmpv at build time (pkg-config) instead of runtime dlopen</li>
+          <li>Fix play/pause button getting out of sync after a track loads</li>
+          <li>Fix library scan reporting phantom new albums</li>
+          <li>Reduce log noise</li>
+          <li>Bump pipewire 1.6.2 → 1.6.3</li>
+        </ul>
+      </description>
+    </release>
     <release version="1.0.0" date="2025-09-03">
       <description>
         <p>Initial release - A simple cross-platform Navidrome client</p>

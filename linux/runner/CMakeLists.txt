@@ -23,4 +23,11 @@ add_definitions(-DAPPLICATION_ID="${APPLICATION_ID}")
 target_link_libraries(${BINARY_NAME} PRIVATE flutter)
 target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::GTK)
 
+# Link libmpv at build time so the dynamic linker resolves it on app launch
+# (no runtime dlopen needed). Dart FFI then locates symbols via
+# DynamicLibrary.process(). Requires `mpv-libs-devel` (Fedora) or
+# `libmpv-dev` (Debian/Ubuntu) on the build host.
+pkg_check_modules(MPV REQUIRED IMPORTED_TARGET mpv)
+target_link_libraries(${BINARY_NAME} PRIVATE PkgConfig::MPV)
+
 target_include_directories(${BINARY_NAME} PRIVATE "${CMAKE_SOURCE_DIR}")
