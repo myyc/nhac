@@ -84,9 +84,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
   }
 
   Future<void> _loadAlbumDetails() async {
-    if (kDebugMode) {
-      print('[AlbumDetailScreen] Loading album details for: ${widget.album.name}');
-    }
     final cacheProvider = context.read<CacheProvider>();
     final networkProvider = context.read<NetworkProvider>();
     final albumDownloadService = context.read<AlbumDownloadService?>();
@@ -99,27 +96,15 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
     try {
       // Always try cache first, never force refresh by default
       final forceRefresh = false;
-      if (kDebugMode) {
-        print('[AlbumDetailScreen] Fetching songs from cache... (forceRefresh: $forceRefresh)');
-      }
       final songs = await cacheProvider.getSongsByAlbum(
         widget.album.id,
         forceRefresh: forceRefresh,
       );
-      if (kDebugMode) {
-        print('[AlbumDetailScreen] Found ${songs.length} songs');
-      }
 
       // Check for existing album download progress
       final albumDownloadProgress = albumDownloadService != null
           ? await albumDownloadService.getAlbumDownload(widget.album.id)
           : null;
-
-      if (kDebugMode) {
-        if (albumDownloadProgress != null) {
-          print('[AlbumDetailScreen] Found existing download progress: ${albumDownloadProgress.status} (${albumDownloadProgress.progress}%)');
-        }
-      }
 
       if (mounted) {
         setState(() {
@@ -127,9 +112,6 @@ class _AlbumDetailScreenState extends State<AlbumDetailScreen> {
           _isLoading = false;
           _albumDownloadProgress = albumDownloadProgress;
         });
-        if (kDebugMode) {
-          print('[AlbumDetailScreen] UI updated successfully');
-        }
 
         // If no songs found and we're online, trigger a scan to pick up new tracks
         if (songs.isEmpty && !networkProvider.isOffline && networkProvider.isServerReachable) {

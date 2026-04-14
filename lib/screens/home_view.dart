@@ -90,8 +90,6 @@ class _HomeViewState extends State<HomeView> {
     final cacheProvider = context.read<CacheProvider>();
     final networkProvider = context.read<NetworkProvider>();
 
-    debugPrint('[HomeView] _loadData called - api: ${api != null}, forceRefresh: $forceRefresh, showLoading: $showLoading');
-
     // Only show loading spinner on first load (when no data exists)
     if (showLoading && _recentlyAdded == null) {
       setState(() {
@@ -107,26 +105,21 @@ class _HomeViewState extends State<HomeView> {
 
       // Always load cached album IDs for opacity
       final cachedAlbumIds = await DatabaseHelper.getCachedAlbumIds();
-      debugPrint('[HomeView] Cached album IDs: ${cachedAlbumIds.length}');
 
       // Always load popular offline albums (for when we switch to offline mode)
       popularOffline = await DatabaseHelper.getPopularOfflineAlbums();
-      debugPrint('[HomeView] Popular offline albums: ${popularOffline.length}');
 
       // ALWAYS try cache first - this ensures we show something immediately
       try {
         recentlyAdded = await cacheProvider.getRecentlyAdded(forceRefresh: false);
-        debugPrint('[HomeView] Recently added from cache: ${recentlyAdded.length}');
       } catch (e) {
         debugPrint('[HomeView] Error loading recently added: $e');
       }
 
       // If cache is empty, try getting all albums
       if (recentlyAdded.isEmpty) {
-        debugPrint('[HomeView] Cache empty, trying all albums...');
         try {
           final allAlbums = await cacheProvider.getAlbums(forceRefresh: false);
-          debugPrint('[HomeView] All albums from cache: ${allAlbums.length}');
           allAlbums.sort((a, b) => b.id.compareTo(a.id));
           recentlyAdded = allAlbums.take(18).toList();
         } catch (e) {
@@ -135,7 +128,6 @@ class _HomeViewState extends State<HomeView> {
       }
 
       // Update UI with cached data immediately
-      debugPrint('[HomeView] Setting state with ${recentlyAdded.length} albums, mounted: $mounted');
       if (mounted && recentlyAdded.isNotEmpty) {
         setState(() {
           _recentlyAdded = recentlyAdded;

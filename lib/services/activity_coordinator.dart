@@ -58,10 +58,6 @@ class ActivityCoordinator extends ChangeNotifier {
     _isInForeground = isForeground;
     final nowIdle = isIdle;
 
-    if (kDebugMode) {
-      debugPrint('[ActivityCoordinator] Foreground: $isForeground, isIdle: $nowIdle');
-    }
-
     _notifyStateChange(wasIdle, nowIdle);
     notifyListeners();
   }
@@ -73,10 +69,6 @@ class ActivityCoordinator extends ChangeNotifier {
     final wasIdle = this.isIdle;
     _isPlaying = isPlaying;
     final nowIdle = this.isIdle;
-
-    if (kDebugMode) {
-      debugPrint('[ActivityCoordinator] Playing: $isPlaying, isIdle: $nowIdle');
-    }
 
     _notifyStateChange(wasIdle, nowIdle);
     notifyListeners();
@@ -90,10 +82,6 @@ class ActivityCoordinator extends ChangeNotifier {
     _isDownloading = isDownloading;
     final nowIdle = this.isIdle;
 
-    if (kDebugMode) {
-      debugPrint('[ActivityCoordinator] Downloading: $isDownloading, isIdle: $nowIdle');
-    }
-
     _notifyStateChange(wasIdle, nowIdle);
     notifyListeners();
   }
@@ -101,17 +89,11 @@ class ActivityCoordinator extends ChangeNotifier {
   void _notifyStateChange(bool wasIdle, bool nowIdle) {
     if (!wasIdle && nowIdle) {
       // Transitioning to idle - suspend all background tasks
-      if (kDebugMode) {
-        debugPrint('[ActivityCoordinator] Suspending background tasks');
-      }
       for (final callback in _suspendCallbacks) {
         callback();
       }
     } else if (wasIdle && !nowIdle) {
       // Transitioning from idle - resume background tasks
-      if (kDebugMode) {
-        debugPrint('[ActivityCoordinator] Resuming background tasks');
-      }
       for (final callback in _resumeCallbacks) {
         callback();
       }

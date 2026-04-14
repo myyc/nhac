@@ -59,6 +59,10 @@ class MpvPlayer {
   bool _buffering = false;
   double _volume = 1.0;
 
+  // Resolved when mpv emits fileLoaded after a load() call. Used to defer
+  // post-load seeks until mpv is actually ready to handle them.
+  Completer<void>? _fileLoadedCompleter;
+
   /// Stream of player state changes
   Stream<MpvPlayerState> get stateStream => _stateController.stream;
 
@@ -99,22 +103,24 @@ class MpvPlayer {
   bool get isInitialized => _initialized;
 
   /// Initialize the player
-  Future<bool> initialize([String? libmpvPath]) async {
+  Future<bool> initialize() async {
     if (_initialized) return true;
     if (_disposed) return false;
 
     // Set C locale for numeric formatting (required by mpv)
     setNumericLocaleToC();
 
-    _mpv = LibMpv.load(libmpvPath);
+    _mpv = LibMpv.load();
     if (_mpv == null) {
-      _errorController.add(MpvPlayerError(-1, 'Failed to load libmpv'));
+      _errorController.add(MpvPlayerError(-1, 'Failed to resolve libmpv symbols'));
       return false;
     }
 
     _ctx = _mpv!.mpvCreate();
     if (_ctx == null || _ctx == nullptr) {
       _errorController.add(MpvPlayerError(-2, 'Failed to create mpv context'));
+      // ignore: avoid_print
+      print('[MpvPlayer] mpv_create() returned null');
       return false;
     }
 
@@ -138,6 +144,8 @@ class MpvPlayer {
     if (result < 0) {
       final error = _mpv!.getErrorString(result);
       _errorController.add(MpvPlayerError(result, 'Init failed: $error'));
+      // ignore: avoid_print
+      print('[MpvPlayer] mpv_initialize() failed: $error (code $result)');
       _mpv!.mpvTerminateDestroy(_ctx!);
       _ctx = null;
       return false;
@@ -229,10 +237,21 @@ class MpvPlayer {
         case 'pause':
           if (message.value is bool) {
             final paused = message.value as bool;
-            if (paused && _state == MpvPlayerState.playing) {
-              _updateState(MpvPlayerState.paused);
-            } else if (!paused && _state == MpvPlayerState.paused) {
-              _updateState(MpvPlayerState.playing);
+            // Mirror mpv's pause flag onto our state. Cover transitions from
+            // ready/loading too — autoPlay loads land us in `ready` and only
+            // a pause=false event marks the actual start of playback.
+            if (paused) {
+              if (_state == MpvPlayerState.playing ||
+                  _state == MpvPlayerState.ready ||
+                  _state == MpvPlayerState.loading) {
+                _updateState(MpvPlayerState.paused);
+              }
+            } else {
+              if (_state == MpvPlayerState.paused ||
+                  _state == MpvPlayerState.ready ||
+                  _state == MpvPlayerState.loading) {
+                _updateState(MpvPlayerState.playing);
+              }
             }
           }
         case 'eof-reached':
@@ -260,7 +279,16 @@ class MpvPlayer {
           }
       }
     } else if (message is _FileLoadedEvent) {
-      _updateState(MpvPlayerState.ready);
+      // Only mark ready if we're still in the loading phase. load() may have
+      // already moved us to playing/paused based on the autoPlay intent;
+      // don't override that here.
+      if (_state == MpvPlayerState.loading) {
+        _updateState(MpvPlayerState.ready);
+      }
+      // Unblock any load() call waiting to seek post-load.
+      if (_fileLoadedCompleter != null && !_fileLoadedCompleter!.isCompleted) {
+        _fileLoadedCompleter!.complete();
+      }
     } else if (message is _EndFileEvent) {
       if (message.reason == MpvEndFileReason.eof) {
         _updateState(MpvPlayerState.completed);
@@ -284,31 +312,57 @@ class MpvPlayer {
     }
   }
 
-  /// Load and play a URL or file path
-  Future<void> load(String uri, {bool autoPlay = true}) async {
+  /// Load and play a URL or file path. If [startPosition] is provided, the
+  /// player will seek to that offset once mpv has actually loaded the file
+  /// (waiting on the FileLoaded event — sending a seek before then is
+  /// unreliable for HTTP-streamed sources).
+  Future<void> load(String uri, {bool autoPlay = true, Duration? startPosition}) async {
     if (!_initialized || _ctx == null) return;
 
     _updateState(MpvPlayerState.loading);
-    _position = Duration.zero;
+    _position = startPosition ?? Duration.zero;
     _duration = null;
     _positionController.add(_position);
     _durationController.add(null);
 
-    // If not auto-playing, set pause before loading
-    if (!autoPlay) {
+    // Stay paused until the seek has been issued, so playback doesn't briefly
+    // start at 0 before jumping. Then unpause for autoPlay.
+    final hasStart = startPosition != null && startPosition.inMilliseconds > 0;
+    if (hasStart || !autoPlay) {
       await _setProperty('pause', 'yes');
     }
 
+    _fileLoadedCompleter = Completer<void>();
     await _command(['loadfile', uri, 'replace']);
 
-    // If auto-playing, ensure we're not paused
+    if (hasStart) {
+      // Wait for mpv to actually load the file before seeking. Bail after
+      // a short timeout so we don't hang forever on a bad URL.
+      try {
+        await _fileLoadedCompleter!.future
+            .timeout(const Duration(seconds: 8));
+        final secs = startPosition.inMilliseconds / 1000.0;
+        await _command(['seek', secs.toString(), 'absolute']);
+      } catch (_) {
+        // Timed out; carry on without the seek.
+      }
+    }
+
     if (autoPlay) {
+      // Setting pause=no when it was already no (default) doesn't emit a
+      // property-change event, so we'd never leave `ready`. Drive the state
+      // optimistically; an endFile(error) event will roll us back if loading
+      // fails.
       await _setProperty('pause', 'no');
+      _updateState(MpvPlayerState.playing);
+    } else {
+      _updateState(MpvPlayerState.paused);
     }
   }
 
   /// Start or resume playback
   Future<void> play() async {
+    print('[MpvPlayer] play() called, state=$_state, initialized=$_initialized');
     if (!_initialized || _ctx == null) return;
     await _setProperty('pause', 'no');
     _updateState(MpvPlayerState.playing);
@@ -316,6 +370,7 @@ class MpvPlayer {
 
   /// Pause playback
   Future<void> pause() async {
+    print('[MpvPlayer] pause() called, state=$_state');
     if (!_initialized || _ctx == null) return;
     await _setProperty('pause', 'yes');
     _updateState(MpvPlayerState.paused);
@@ -343,9 +398,12 @@ class MpvPlayer {
 
   /// Seek to position
   Future<void> seek(Duration position) async {
+    print('[MpvPlayer] seek($position) called, state=$_state');
     if (!_initialized || _ctx == null) return;
     final seconds = position.inMilliseconds / 1000.0;
-    await _setProperty('time-pos', seconds.toString());
+    // Use the seek command (absolute) — more reliable than setting time-pos
+    // for HTTP-streamed sources where mpv must coordinate cache seeks.
+    await _command(['seek', seconds.toString(), 'absolute']);
   }
 
   /// Seek by offset

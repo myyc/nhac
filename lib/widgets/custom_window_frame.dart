@@ -69,6 +69,10 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
       children: [
         // Main content
         widget.child,
+        // Resize handles around the window edges. TitleBarStyle.hidden tells
+        // GTK to drop its decorations, including the resize border, so we
+        // recreate them ourselves with windowManager.startResizing.
+        ..._resizeHandles(),
         // Hover area for window controls - positioned to match AppBar
         Positioned(
           top: 0,
@@ -112,6 +116,51 @@ class _CustomWindowFrameState extends State<CustomWindowFrame> {
         ),
       ],
     );
+  }
+
+  List<Widget> _resizeHandles() {
+    const thickness = 6.0;
+    const cornerSize = 12.0;
+
+    Widget edge({
+      required ResizeEdge edge,
+      double? top,
+      double? left,
+      double? right,
+      double? bottom,
+      double? width,
+      double? height,
+      MouseCursor? cursor,
+    }) {
+      return Positioned(
+        top: top,
+        left: left,
+        right: right,
+        bottom: bottom,
+        width: width,
+        height: height,
+        child: MouseRegion(
+          cursor: cursor ?? MouseCursor.defer,
+          child: GestureDetector(
+            behavior: HitTestBehavior.translucent,
+            onPanStart: (_) => windowManager.startResizing(edge),
+          ),
+        ),
+      );
+    }
+
+    return [
+      // Edges
+      edge(edge: ResizeEdge.top, top: 0, left: cornerSize, right: cornerSize, height: thickness, cursor: SystemMouseCursors.resizeUpDown),
+      edge(edge: ResizeEdge.bottom, bottom: 0, left: cornerSize, right: cornerSize, height: thickness, cursor: SystemMouseCursors.resizeUpDown),
+      edge(edge: ResizeEdge.left, left: 0, top: cornerSize, bottom: cornerSize, width: thickness, cursor: SystemMouseCursors.resizeLeftRight),
+      edge(edge: ResizeEdge.right, right: 0, top: cornerSize, bottom: cornerSize, width: thickness, cursor: SystemMouseCursors.resizeLeftRight),
+      // Corners
+      edge(edge: ResizeEdge.topLeft, top: 0, left: 0, width: cornerSize, height: cornerSize, cursor: SystemMouseCursors.resizeUpLeftDownRight),
+      edge(edge: ResizeEdge.topRight, top: 0, right: 0, width: cornerSize, height: cornerSize, cursor: SystemMouseCursors.resizeUpRightDownLeft),
+      edge(edge: ResizeEdge.bottomLeft, bottom: 0, left: 0, width: cornerSize, height: cornerSize, cursor: SystemMouseCursors.resizeUpRightDownLeft),
+      edge(edge: ResizeEdge.bottomRight, bottom: 0, right: 0, width: cornerSize, height: cornerSize, cursor: SystemMouseCursors.resizeUpLeftDownRight),
+    ];
   }
 }
 

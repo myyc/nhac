@@ -9,13 +9,21 @@ import '../providers/player_provider.dart';
 import '../providers/auth_provider.dart';
 import '../models/artist.dart';
 import '../models/album.dart';
+import '../models/song.dart';
 import '../services/share_service.dart';
 import '../widgets/cached_cover_image.dart';
 import 'artist_detail_screen.dart';
 import 'album_detail_screen.dart';
+import 'lyrics_screen.dart';
 
 class NowPlayingScreen extends StatelessWidget {
   const NowPlayingScreen({super.key});
+
+  void _openLyrics(BuildContext context, Song song) {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => LyricsScreen(song: song)),
+    );
+  }
 
   // Calculate appropriate icon color based on HSL values
   Color _getContrastIconColor(Color backgroundColor) {
@@ -97,7 +105,9 @@ class NowPlayingScreen extends StatelessWidget {
                   child: (Platform.isWindows || Platform.isLinux || Platform.isMacOS)
                       ? DragToMoveArea(
                           child: Center(
-                            child: Container(
+                            child: GestureDetector(
+                              onTap: () => _openLyrics(context, song),
+                              child: Container(
                               constraints: const BoxConstraints(maxWidth: 360, maxHeight: 360),
                               decoration: BoxDecoration(
                                 borderRadius: BorderRadius.circular(20),
@@ -163,10 +173,13 @@ class NowPlayingScreen extends StatelessWidget {
                                 ),
                               ),
                             ),
+                            ),
                           ),
                         )
                       : Center(
-                          child: Container(
+                          child: GestureDetector(
+                            onTap: () => _openLyrics(context, song),
+                            child: Container(
                             constraints: const BoxConstraints(maxWidth: 360, maxHeight: 360),
                             decoration: BoxDecoration(
                               borderRadius: BorderRadius.circular(20),
@@ -230,6 +243,7 @@ class NowPlayingScreen extends StatelessWidget {
                                   ),
                                 ),
                               ),
+                            ),
                             ),
                           ),
                         ),

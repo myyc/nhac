@@ -67,14 +67,12 @@ class AggressiveCacheService {
     _isSuspended = true;
     _syncTimer?.cancel();
     _syncTimer = null;
-    if (kDebugMode) debugPrint('[AggressiveCache] Suspended - timers stopped');
   }
 
   /// Resume background sync tasks
   void resume() {
     _isSuspended = false;
     _startPeriodicSync();
-    if (kDebugMode) debugPrint('[AggressiveCache] Resumed - timers restarted');
   }
 
   Future<void> smartSync() async {

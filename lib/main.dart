@@ -25,7 +25,7 @@ import 'services/notification_service.dart';
 import 'dart:async';
 
 late BaseAudioHandler? audioHandler;
-late NhacAudioHandler? actualAudioHandler;
+NhacAudioHandler? actualAudioHandler;
 late AudioPlayer globalAudioPlayer;
 MpvPlayer? globalMpvPlayer; // Used on Linux/Windows instead of just_audio
 bool _isCleanedUp = false;
@@ -81,8 +81,6 @@ Future<void> _runEarlyMigrations() async {
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  print('[Main] Starting app...');
-
   // Initialize database first (needed for migration check)
   try {
     await DatabaseHelper.database;
@@ -96,13 +94,17 @@ void main() async {
   // On Linux/Windows, use our custom MpvPlayer instead of just_audio + media_kit
   // This avoids the OSC property issue with audio-only mpv builds
   if (Platform.isLinux || Platform.isWindows) {
-    print('[Main] Initializing MpvPlayer for ${Platform.operatingSystem}...');
     globalMpvPlayer = MpvPlayer();
-    final initialized = await globalMpvPlayer!.initialize();
+    bool initialized = false;
+    try {
+      initialized = await globalMpvPlayer!.initialize();
+    } catch (e, st) {
+      print('[Main] MpvPlayer init threw: $e\n$st');
+    }
     if (initialized) {
-      print('[Main] MpvPlayer initialized successfully');
+      print('[Main] MpvPlayer ready');
     } else {
-      print('[Main] MpvPlayer initialization failed, falling back to just_audio');
+      print('[Main] MpvPlayer init failed — playback will not work on this platform');
       globalMpvPlayer = null;
     }
 
@@ -293,18 +295,12 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
       case AppLifecycleState.paused:
       case AppLifecycleState.inactive:
       case AppLifecycleState.hidden:
-        // App going to background - update foreground state
-        debugPrint('[Main] App backgrounded');
         activityCoordinator.setForegroundState(false);
         break;
       case AppLifecycleState.resumed:
-        // App coming to foreground - update foreground state
-        debugPrint('[Main] App resumed');
         activityCoordinator.setForegroundState(true);
         break;
       case AppLifecycleState.detached:
-        // App is being terminated - clean up resources
-        debugPrint('[Main] App detached - cleaning up');
         _cleanupBeforeExit();
         break;
     }
@@ -332,7 +328,6 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
     if (_isCleanedUp) return;
     _isCleanedUp = true;
 
-    debugPrint('[Main] Cleaning up before exit...');
 
     // Stop the global audio player immediately to prevent hanging
     // Skip on Linux/Windows where we use MpvPlayer (just_audio triggers media_kit errors)
@@ -355,7 +350,6 @@ class _AuthWrapperState extends State<AuthWrapper> with WidgetsBindingObserver {
       }
     }
 
-    debugPrint('[Main] Cleanup complete');
   }
 
   @override
