@@ -176,6 +176,8 @@ jobs:
     runs-on: ubuntu-24.04
     needs: [build-macos, build-linux, build-android]
     if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -183,11 +185,19 @@ jobs:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
 
+      - name: Repack macOS .app into a zip
+        run: |
+          # download-artifact unpacks the upload-artifact zip, so the macOS
+          # bundle's contents land directly under nhac-macos/. Restore the
+          # .app wrapper and zip it for the release asset.
+          mv nhac-macos nhac.app
+          zip -q -r nhac-macos.zip nhac.app
+
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
           files: |
-            nhac-macos/nhac.app
+            nhac-macos.zip
             nhac-linux-flatpak/nhac.flatpak
             nhac-android-apk/app-release.apk
           draft: false
