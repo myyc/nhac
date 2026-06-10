@@ -343,6 +343,11 @@ class NavidromeApi {
     if (transcode) {
       params['format'] = 'mp3';
       params['maxBitRate'] = '320';
+      // Without a Content-Length, ExoPlayer (just_audio on Android) treats the
+      // transcoded stream as non-seekable and restarts from 0 on every seek.
+      // estimateContentLength makes Navidrome report an estimated length so
+      // range requests — and therefore scrubbing — work.
+      params['estimateContentLength'] = 'true';
     }
 
     final queryString = params.entries
