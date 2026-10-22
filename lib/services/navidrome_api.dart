@@ -11,6 +11,20 @@ import '../models/lyrics.dart';
 import '../providers/network_provider.dart';
 import 'auth_service.dart' show LoginResult;
 
+/// Typed API failure so callers can distinguish "your cached ID is stale"
+/// (Subsonic code 70 — evict/re-resolve) from "network is down" (retry).
+class NavidromeApiException implements Exception {
+  final String message;
+  final int? code;
+  NavidromeApiException(this.message, {this.code});
+
+  /// Subsonic "data not found": the ID does not exist on the server.
+  bool get isNotFound => code == 70;
+
+  @override
+  String toString() => 'API error: $message (code: $code)';
+}
+
 class NavidromeApi {
   final String baseUrl;
   final String username;
@@ -132,7 +146,7 @@ class NavidromeApi {
         final response = await http.get(uri).timeout(_requestTimeout);
 
         if (response.statusCode != 200) {
-          throw Exception('HTTP error: ${response.statusCode}');
+          throw NavidromeApiException('HTTP error: ${response.statusCode}');
         }
 
         final data = json.decode(response.body);
@@ -140,7 +154,7 @@ class NavidromeApi {
 
         if (subsonicResponse['status'] != 'ok') {
           final error = subsonicResponse['error'];
-          throw Exception('API error: ${error['message']} (code: ${error['code']})');
+          throw NavidromeApiException(error['message'], code: error['code']);
         }
 
         // Report success to reset circuit breaker

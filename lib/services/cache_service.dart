@@ -44,12 +44,31 @@ class CacheService {
       final artists = await api.getArtists();
       await DatabaseHelper.insertArtists(artists);
 
-      // Fetch all albums
-      final albums = await api.getAlbumList2(
-        type: 'alphabeticalByName',
-        size: 500,
-      );
+      // Fetch ALL albums, paginating — a complete list is required both for
+      // the song caching below and for the prune to be authoritative.
+      final albums = <Album>[];
+      const pageSize = 500;
+      while (true) {
+        final page = await api.getAlbumList2(
+          type: 'alphabeticalByName',
+          size: pageSize,
+          offset: albums.length,
+        );
+        albums.addAll(page);
+        if (page.length < pageSize) break;
+      }
       await DatabaseHelper.insertAlbums(albums);
+
+      // A complete fetch is authoritative: prune cached rows the server no
+      // longer has. Single server-side deletions never trigger the startup
+      // probe's wholesale wipe, so this is where they get cleaned up. An
+      // empty page means something odd server-side — skip pruning then.
+      if (albums.isNotEmpty) {
+        await DatabaseHelper.pruneLibraryNotIn(
+          artistIds: artists.map((a) => a.id).toList(),
+          albumIds: albums.map((a) => a.id).toList(),
+        );
+      }
 
       // Cache songs for ALL albums to ensure offline browsing works
       try {
@@ -170,11 +189,20 @@ class CacheService {
   
   Future<List<Album>> getAlbumsByArtist(String artistId, {bool forceRefresh = false, bool allowNetworkFallback = true}) async {
     if (forceRefresh) {
-      // Fetch fresh data from API
-      final result = await api.getArtist(artistId);
-      final albums = result['albums'] as List<Album>?;
-      if (albums != null) {
-        await DatabaseHelper.insertAlbums(albums);
+      try {
+        // Fetch fresh data from API
+        final result = await api.getArtist(artistId);
+        final albums = result['albums'] as List<Album>?;
+        if (albums != null) {
+          await DatabaseHelper.insertAlbums(albums);
+        }
+      } catch (e) {
+        if (isNotFoundError(e)) {
+          final healed = await _healStaleArtist(artistId);
+          if (healed.isNotEmpty) return healed;
+        } else {
+          rethrow;
+        }
       }
     }
 
@@ -192,7 +220,8 @@ class CacheService {
         return albums;
       } catch (e) {
         print('Network fallback failed for artist albums: $e');
-        return [];
+        // Stale artist ID? Silently replace it with the server's current one.
+        return _healStaleArtist(artistId);
       }
     }
 
@@ -201,11 +230,20 @@ class CacheService {
   
   Future<List<Song>> getSongsByAlbum(String albumId, {bool forceRefresh = false, bool allowNetworkFallback = true}) async {
     if (forceRefresh) {
-      // Fetch fresh data from API
-      final result = await api.getAlbum(albumId);
-      final songs = result['songs'] as List<Song>?;
-      if (songs != null) {
-        await DatabaseHelper.insertSongs(songs);
+      try {
+        // Fetch fresh data from API
+        final result = await api.getAlbum(albumId);
+        final songs = result['songs'] as List<Song>?;
+        if (songs != null) {
+          await DatabaseHelper.insertSongs(songs);
+        }
+      } catch (e) {
+        if (isNotFoundError(e)) {
+          final healed = await _healStaleAlbum(albumId);
+          if (healed.isNotEmpty) return healed;
+        } else {
+          rethrow;
+        }
       }
     }
 
@@ -224,11 +262,150 @@ class CacheService {
         return songs;
       } catch (e) {
         print('Network fallback failed for album songs: $e');
-        return [];
+        // Stale album ID? Silently replace it with the server's current one.
+        return _healStaleAlbum(albumId);
       }
     }
 
     return [];
+  }
+
+  /// Subsonic "data not found" (code 70) — the ID is stale, not the network.
+  static bool isNotFoundError(Object e) =>
+      e is NavidromeApiException && e.isNotFound;
+
+  /// The server is ground truth; a missing album usually means a stale ID
+  /// after a server re-index. Resolve it by name+artist, swap the cache entry
+  /// for the server's current album and return its tracks. If the album is
+  /// genuinely gone, evict the stale entry.
+  Future<List<Song>> _healStaleAlbum(String staleAlbumId) async {
+    try {
+      final albums = await DatabaseHelper.getAlbums();
+      Album? stale;
+      for (final a in albums) {
+        if (a.id == staleAlbumId) {
+          stale = a;
+          break;
+        }
+      }
+      if (stale == null) return [];
+
+      String norm(String? s) => (s ?? '').trim().toLowerCase();
+      final results = await api.search3(stale.name);
+      final candidates = results['albums'] as List<Album>? ?? const <Album>[];
+      Album? fresh;
+      for (final c in candidates) {
+        if (norm(c.name) != norm(stale.name)) continue;
+        fresh ??= c;
+        if (stale.artist == null || norm(c.artist) == norm(stale.artist)) {
+          fresh = c;
+          break;
+        }
+      }
+
+      if (fresh == null) {
+        await DatabaseHelper.deleteSongsByAlbum(staleAlbumId);
+        await DatabaseHelper.deleteAlbum(staleAlbumId);
+        return [];
+      }
+
+      final result = await api.getAlbum(fresh.id);
+      final songs = result['songs'] as List<Song>? ?? const <Song>[];
+      await DatabaseHelper.deleteSongsByAlbum(staleAlbumId);
+      await DatabaseHelper.deleteAlbum(staleAlbumId);
+      await DatabaseHelper.insertAlbums([fresh]);
+      if (songs.isNotEmpty) {
+        await DatabaseHelper.insertSongs(songs);
+      }
+      return songs;
+    } catch (e) {
+      print('Stale album heal failed: $e');
+      return [];
+    }
+  }
+
+  /// Same idea as [_healStaleAlbum] for artists: resolve by name, swap the
+  /// cache entry, return the fresh artist's albums; evict when truly gone.
+  Future<List<Album>> _healStaleArtist(String staleArtistId) async {
+    try {
+      final artists = await DatabaseHelper.getArtists();
+      Artist? stale;
+      for (final a in artists) {
+        if (a.id == staleArtistId) {
+          stale = a;
+          break;
+        }
+      }
+      if (stale == null) return [];
+
+      String norm(String? s) => (s ?? '').trim().toLowerCase();
+      final results = await api.search3(stale.name);
+      final candidates = results['artists'] as List<Artist>? ?? const <Artist>[];
+      Artist? fresh;
+      for (final c in candidates) {
+        if (norm(c.name) == norm(stale.name)) {
+          fresh = c;
+          break;
+        }
+      }
+
+      if (fresh == null) {
+        await DatabaseHelper.deleteArtist(staleArtistId);
+        return [];
+      }
+
+      final result = await api.getArtist(fresh.id);
+      final albums = result['albums'] as List<Album>? ?? const <Album>[];
+      await DatabaseHelper.deleteArtist(staleArtistId);
+      await DatabaseHelper.insertArtists([fresh]);
+      if (albums.isNotEmpty) {
+        await DatabaseHelper.insertAlbums(albums);
+      }
+      return albums;
+    } catch (e) {
+      print('Stale artist heal failed: $e');
+      return [];
+    }
+  }
+
+  /// Startup probe: validate up to two cached album IDs against the server.
+  /// If all probes are gone, the cache is from another server era (e.g. a
+  /// re-index re-generated every ID) — wipe it once so everything re-syncs
+  /// from the ground truth. Probing two IDs avoids wiping when a single
+  /// album was merely deleted server-side.
+  Future<void> verifyCacheIntegrity() async {
+    try {
+      final albums = await DatabaseHelper.getAlbums();
+      if (albums.isEmpty) return;
+
+      var probes = 0;
+      var missing = 0;
+      for (final album in albums.take(2)) {
+        probes++;
+        try {
+          await api.getAlbum(album.id);
+        } catch (e) {
+          if (isNotFoundError(e)) {
+            missing++;
+          } else {
+            // Network trouble is not a cache problem — stay put.
+            return;
+          }
+        }
+      }
+
+      if (probes > 0 && missing == probes) {
+        if (kDebugMode) {
+          print('[CacheService] Integrity probe failed, wiping stale cache');
+        }
+        await DatabaseHelper.clearAllCache();
+        // Re-mark the startup migration so it doesn't re-wipe fresh data.
+        await DatabaseHelper.setSyncMetadata(
+            'cache_migration_v3_clear_all', DateTime.now().toIso8601String());
+      }
+    } catch (e) {
+      print('Cache integrity probe failed: $e');
+    }
   }
   
   Future<List<Album>> getRecentlyAdded({bool forceRefresh = false}) async {

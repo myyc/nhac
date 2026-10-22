@@ -1059,6 +1059,78 @@ class DatabaseHelper {
     await db.delete('audio_cache');
     await db.delete('download_queue');
   }
+
+  /// Evict a single song/album whose server counterpart is gone. The cache is
+  /// a helper, not ground truth — stale entries are removed on the spot.
+  static Future<void> deleteSong(String id) async {
+    final db = await database;
+    await db.delete('songs', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<void> deleteAlbum(String id) async {
+    final db = await database;
+    await db.delete('albums', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<void> deleteArtist(String id) async {
+    final db = await database;
+    await db.delete('artists', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<void> deleteSongsByAlbum(String albumId) async {
+    final db = await database;
+    await db.delete('songs', where: 'albumId = ?', whereArgs: [albumId]);
+  }
+
+  /// Remove cached artists/albums (and their songs) that are absent from a
+  /// complete server-side library listing. Server-side deletions never
+  /// trigger the startup probe's wholesale wipe, so this is where they get
+  /// cleaned up. Song pruning is pure SQL to avoid SQLite variable limits;
+  /// FTS tables stay in sync via delete triggers.
+  static Future<void> pruneLibraryNotIn({
+    required List<String> artistIds,
+    required List<String> albumIds,
+  }) async {
+    final db = await database;
+    final freshAlbums = albumIds.toSet();
+    final freshArtists = artistIds.toSet();
+
+    final cachedAlbums = await db.query('albums', columns: ['id']);
+    final staleAlbumIds = [
+      for (final row in cachedAlbums)
+        if (!freshAlbums.contains(row['id'])) row['id'] as String,
+    ];
+
+    final cachedArtists = await db.query('artists', columns: ['id']);
+    final staleArtistIds = [
+      for (final row in cachedArtists)
+        if (!freshArtists.contains(row['id'])) row['id'] as String,
+    ];
+
+    const chunk = 500;
+    for (var i = 0; i < staleAlbumIds.length; i += chunk) {
+      final end = i + chunk > staleAlbumIds.length
+          ? staleAlbumIds.length
+          : i + chunk;
+      final ids = staleAlbumIds.sublist(i, end);
+      await db.delete('albums',
+          where: 'id IN (${List.filled(ids.length, '?').join(',')})',
+          whereArgs: ids);
+    }
+    for (var i = 0; i < staleArtistIds.length; i += chunk) {
+      final end = i + chunk > staleArtistIds.length
+          ? staleArtistIds.length
+          : i + chunk;
+      final ids = staleArtistIds.sublist(i, end);
+      await db.delete('artists',
+          where: 'id IN (${List.filled(ids.length, '?').join(',')})',
+          whereArgs: ids);
+    }
+
+    // Songs whose album vanished (or whose album row was already gone).
+    // albumId NULLs survive: NULL NOT IN (...) never matches.
+    await db.delete('songs', where: 'albumId NOT IN (SELECT id FROM albums)');
+  }
   
   // Audio cache operations
   static Future<void> insertAudioCache({

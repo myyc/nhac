@@ -47,6 +47,10 @@ class CacheProvider extends ChangeNotifier {
     _libraryScanService = LibraryScanService(api: api);
     _libraryScanService!.setNetworkProvider(networkProvider);
 
+    // One-time probe per session: if the cached IDs are from another server
+    // era, the cache is wiped and everything re-syncs from the ground truth.
+    unawaited(_cacheService!.verifyCacheIntegrity());
+
     // Listen to library scan changes
     _scanSubscription = _libraryScanService!.libraryChanges.listen((event) {
       if (kDebugMode) {
