@@ -201,11 +201,20 @@ class CacheService {
   
   Future<List<Song>> getSongsByAlbum(String albumId, {bool forceRefresh = false, bool allowNetworkFallback = true}) async {
     if (forceRefresh) {
-      // Fetch fresh data from API
-      final result = await api.getAlbum(albumId);
-      final songs = result['songs'] as List<Song>?;
-      if (songs != null) {
-        await DatabaseHelper.insertSongs(songs);
+      try {
+        // Fetch fresh data from API
+        final result = await api.getAlbum(albumId);
+        final songs = result['songs'] as List<Song>?;
+        if (songs != null) {
+          await DatabaseHelper.insertSongs(songs);
+        }
+      } catch (e) {
+        if (isNotFoundError(e)) {
+          final healed = await _healStaleAlbum(albumId);
+          if (healed.isNotEmpty) return healed;
+        } else {
+          rethrow;
+        }
       }
     }
 
@@ -224,11 +233,65 @@ class CacheService {
         return songs;
       } catch (e) {
         print('Network fallback failed for album songs: $e');
-        return [];
+        // Stale album ID? Silently replace it with the server's current one.
+        return _healStaleAlbum(albumId);
       }
     }
 
     return [];
+  }
+
+  /// Subsonic "data not found" (code 70) — the ID is stale, not the network.
+  static bool isNotFoundError(Object e) => e.toString().contains('code: 70');
+
+  /// The server is ground truth; a missing album usually means a stale ID
+  /// after a server re-index. Resolve it by name+artist, swap the cache entry
+  /// for the server's current album and return its tracks. If the album is
+  /// genuinely gone, evict the stale entry.
+  Future<List<Song>> _healStaleAlbum(String staleAlbumId) async {
+    try {
+      final albums = await DatabaseHelper.getAlbums();
+      Album? stale;
+      for (final a in albums) {
+        if (a.id == staleAlbumId) {
+          stale = a;
+          break;
+        }
+      }
+      if (stale == null) return [];
+
+      String norm(String? s) => (s ?? '').trim().toLowerCase();
+      final results = await api.search3(stale.name);
+      final candidates = results['albums'] as List<Album>? ?? const <Album>[];
+      Album? fresh;
+      for (final c in candidates) {
+        if (norm(c.name) != norm(stale.name)) continue;
+        fresh ??= c;
+        if (stale.artist == null || norm(c.artist) == norm(stale.artist)) {
+          fresh = c;
+          break;
+        }
+      }
+
+      if (fresh == null) {
+        await DatabaseHelper.deleteSongsByAlbum(staleAlbumId);
+        await DatabaseHelper.deleteAlbum(staleAlbumId);
+        return [];
+      }
+
+      final result = await api.getAlbum(fresh.id);
+      final songs = result['songs'] as List<Song>? ?? const <Song>[];
+      await DatabaseHelper.deleteSongsByAlbum(staleAlbumId);
+      await DatabaseHelper.deleteAlbum(staleAlbumId);
+      await DatabaseHelper.insertAlbums([fresh]);
+      if (songs.isNotEmpty) {
+        await DatabaseHelper.insertSongs(songs);
+      }
+      return songs;
+    } catch (e) {
+      print('Stale album heal failed: $e');
+      return [];
+    }
   }
   
   Future<List<Album>> getRecentlyAdded({bool forceRefresh = false}) async {

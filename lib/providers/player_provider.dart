@@ -16,6 +16,10 @@ import '../providers/network_provider.dart';
 import '../services/activity_coordinator.dart';
 import '../audio/mpv/mpv_player.dart';
 import '../main.dart' as app_main;
+import 'package:path/path.dart' as p;
+
+/// Outcome of a stale-cache recovery attempt.
+enum _StaleRecoveryResult { recovered, notFound, failed }
 
 class PlayerProvider extends ChangeNotifier {
   final AudioPlayer _audioPlayer;
@@ -1720,16 +1724,18 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   /// Run stale-cache recovery at most once per song, keeping the regular
-  /// retry path as fallback. Returns true when playback was restored.
-  Future<bool> _guardedStaleRecovery() async {
-    if (_staleRecoveryAttempts.contains(_currentSong!.id)) return false;
+  /// retry path as fallback.
+  Future<_StaleRecoveryResult> _guardedStaleRecovery() async {
+    if (_staleRecoveryAttempts.contains(_currentSong!.id)) {
+      return _StaleRecoveryResult.failed;
+    }
     _staleRecoveryAttempts.add(_currentSong!.id);
 
     _isRecovering = true;
     try {
-      final recovered = await _recoverFromStaleCache();
-      if (recovered) _playbackRetryCount = 0;
-      return recovered;
+      final result = await _recoverFromStaleCache();
+      if (result == _StaleRecoveryResult.recovered) _playbackRetryCount = 0;
+      return result;
     } finally {
       _isRecovering = false;
     }
@@ -1739,9 +1745,9 @@ class PlayerProvider extends ChangeNotifier {
   /// (wholesale invalid) library cache when IDs changed, repopulate the
   /// album's tracks so upcoming queue items are playable again, remap the
   /// queue to the fresh IDs and reload the current song.
-  Future<bool> _recoverFromStaleCache() async {
+  Future<_StaleRecoveryResult> _recoverFromStaleCache() async {
     final song = _currentSong;
-    if (song == null || _api == null) return false;
+    if (song == null || _api == null) return _StaleRecoveryResult.failed;
     // Note: no isOffline guard — NetworkProvider's detection is best-effort
     // and false-positives at startup; if the network is truly down, search3
     // throws and we fall through to the regular retry path.
@@ -1750,7 +1756,8 @@ class PlayerProvider extends ChangeNotifier {
       final results = await _api!.search3(song.title);
       final candidates = results['songs'] as List<Song>? ?? const <Song>[];
       final fresh = _findFreshMatch(candidates, song);
-      if (fresh == null) return false;
+      // The server answered but has no such song: it's genuinely gone.
+      if (fresh == null) return _StaleRecoveryResult.notFound;
 
       if (fresh.id != song.id && !_libraryCacheWiped) {
         _libraryCacheWiped = true;
@@ -1771,6 +1778,7 @@ class PlayerProvider extends ChangeNotifier {
           }
         } catch (_) {}
       }
+      await DatabaseHelper.insertSongs([fresh]);
 
       _remapQueueWithFreshSongs(song, fresh, albumSongs);
       await _savePlayerState();
@@ -1786,12 +1794,12 @@ class PlayerProvider extends ChangeNotifier {
         print(
             '[PlayerProvider] Stale cache recovered: ${song.id} -> ${fresh.id}');
       }
-      return true;
+      return _StaleRecoveryResult.recovered;
     } catch (e) {
       if (kDebugMode) {
         print('[PlayerProvider] Stale cache recovery failed: $e');
       }
-      return false;
+      return _StaleRecoveryResult.failed;
     }
   }
 
@@ -1816,6 +1824,7 @@ class PlayerProvider extends ChangeNotifier {
   /// Point the queue at the fresh server IDs. When the queue is the stale
   /// song's album, swap in the freshly fetched album track list so all
   /// upcoming tracks are playable again; otherwise replace just this song.
+  /// On-disk audio follows the IDs so downloads keep working.
   void _remapQueueWithFreshSongs(Song stale, Song fresh, List<Song> albumSongs) {
     String norm(String? s) => (s ?? '').trim().toLowerCase();
     final queueIsAlbum = _queue.isNotEmpty &&
@@ -1823,16 +1832,90 @@ class PlayerProvider extends ChangeNotifier {
         _queue.every((s) => norm(s.album) == norm(stale.album));
 
     if (queueIsAlbum && albumSongs.isNotEmpty) {
+      for (final oldSong in _queue) {
+        for (final freshSong in albumSongs) {
+          if (norm(freshSong.title) == norm(oldSong.title)) {
+            unawaited(_remapCachedAudio(oldSong.id, freshSong.id));
+            break;
+          }
+        }
+      }
       var index = albumSongs.indexWhere((s) => norm(s.title) == norm(stale.title));
       if (index < 0) index = _currentIndex.clamp(0, albumSongs.length - 1);
       _queue = albumSongs;
       _currentIndex = index;
       _currentSong = _queue[index];
     } else if (_currentIndex >= 0 && _currentIndex < _queue.length) {
+      unawaited(_remapCachedAudio(stale.id, fresh.id));
       _queue = List.of(_queue)..[_currentIndex] = fresh;
       _currentSong = fresh;
     } else {
+      unawaited(_remapCachedAudio(stale.id, fresh.id));
       _currentSong = fresh;
+    }
+  }
+
+  /// Move a song's on-disk audio (download/cache) from a stale ID to the
+  /// fresh one so offline-capable tracks keep working after re-resolution.
+  Future<void> _remapCachedAudio(String staleId, String freshId) async {
+    if (staleId == freshId) return;
+    try {
+      final info = await DatabaseHelper.getSongCacheInfo(staleId);
+      final cachedPath = info?['cached_path'] as String?;
+      if (cachedPath == null) return;
+      final file = File(cachedPath);
+      if (!await file.exists()) return;
+      final newPath = p.join(
+          p.dirname(cachedPath), '$freshId${p.extension(cachedPath)}');
+      await file.rename(newPath);
+      await DatabaseHelper.updateSongCacheStatus(staleId, false,
+          cachedPath: null);
+      await DatabaseHelper.updateSongCacheStatus(freshId, true,
+          cachedPath: newPath);
+    } catch (_) {}
+  }
+
+  /// The server confirmed the current song is gone: evict it from the local
+  /// cache and the queue, then continue with whatever slid into its slot.
+  /// On-disk audio files are left alone — they may be the only copy.
+  Future<void> _evictMissingSongAndSkip() async {
+    final song = _currentSong;
+    if (song == null) return;
+    if (kDebugMode) {
+      print('[PlayerProvider] "${song.title}" is gone from server, evicting');
+    }
+
+    try {
+      await DatabaseHelper.deleteSong(song.id);
+    } catch (_) {}
+
+    if (_currentIndex >= 0 && _currentIndex < _queue.length) {
+      _queue = List.of(_queue)..removeAt(_currentIndex);
+    }
+
+    if (_queue.isEmpty) {
+      _currentSong = null;
+      _currentIndex = 0;
+      _lastError = 'Track is no longer on the server';
+      notifyListeners();
+      await _savePlayerState();
+      return;
+    }
+
+    if (_currentIndex >= _queue.length) {
+      _currentIndex = _queue.length - 1;
+    }
+
+    if (_resumePlaybackAfterRecovery) {
+      // Clear the playQueue debounce so this continuation isn't swallowed.
+      _lastPlayQueueCall = null;
+      await playQueue(_queue, startIndex: _currentIndex);
+    } else {
+      // Silent context (startup restore): point at the next track but don't
+      // make noise; play() will load it when the user asks.
+      _currentSong = _queue[_currentIndex];
+      notifyListeners();
+      await _savePlayerState();
     }
   }
 
@@ -1842,8 +1925,16 @@ class PlayerProvider extends ChangeNotifier {
 
     // A track that fails to load often just has a stale cache ID (the server
     // is ground truth, the cache only mirrors it). Silently re-resolve it
-    // from the server once before falling back to blind retries.
-    if (_useMpv && await _guardedStaleRecovery()) return;
+    // from the server once; if the server says it's gone, evict it and move
+    // on. Only genuine network failures fall back to blind retries.
+    if (_useMpv) {
+      final recovery = await _guardedStaleRecovery();
+      if (recovery == _StaleRecoveryResult.recovered) return;
+      if (recovery == _StaleRecoveryResult.notFound) {
+        await _evictMissingSongAndSkip();
+        return;
+      }
+    }
 
     _playbackRetryCount++;
 

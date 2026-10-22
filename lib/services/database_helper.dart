@@ -1059,6 +1059,23 @@ class DatabaseHelper {
     await db.delete('audio_cache');
     await db.delete('download_queue');
   }
+
+  /// Evict a single song/album whose server counterpart is gone. The cache is
+  /// a helper, not ground truth — stale entries are removed on the spot.
+  static Future<void> deleteSong(String id) async {
+    final db = await database;
+    await db.delete('songs', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<void> deleteAlbum(String id) async {
+    final db = await database;
+    await db.delete('albums', where: 'id = ?', whereArgs: [id]);
+  }
+
+  static Future<void> deleteSongsByAlbum(String albumId) async {
+    final db = await database;
+    await db.delete('songs', where: 'albumId = ?', whereArgs: [albumId]);
+  }
   
   // Audio cache operations
   static Future<void> insertAudioCache({
