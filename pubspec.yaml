@@ -33,7 +33,7 @@ dependencies:
 
   # The following adds the Cupertino Icons font to your application.
   # Use with the CupertinoIcons class for iOS style icons.
-  cupertino_icons: ^1.0.8
+  cupertino_icons: ^2.0.0
   
   # HTTP and API
   http: ^1.2.0
@@ -49,15 +49,15 @@ dependencies:
   ffi: ^2.1.0  # For libmpv FFI bindings on Linux/Windows
   
   # Image caching
-  cached_network_image: ^3.4.1
+  cached_network_image: ^4.0.5
   
   # Utilities
   crypto: ^3.0.5
-  intl: ^0.19.0
+  intl: ^0.20.3
   collection: ^1.18.0
   
   # Window management for desktop
-  window_manager: ^0.4.3
+  window_manager: ^0.5.2
   
   # Database for caching
   sqflite: ^2.3.3
@@ -73,17 +73,17 @@ dependencies:
   audio_service: ^0.18.18
   
   # Typography
-  google_fonts: ^6.2.1
+  google_fonts: ^8.1.0
   
   # Color extraction from images
   palette_generator: ^0.3.3+4
   
   # Sharing functionality
-  share_plus: ^10.1.2
+  share_plus: ^13.3.1
   
   # Screenshot generation
   screenshot: ^3.0.0
-  connectivity_plus: ^6.1.5
+  connectivity_plus: ^7.3.1
 
   # Desktop notifications (Linux) - direct D-Bus
   dbus: ^0.7.10
@@ -98,7 +98,7 @@ dev_dependencies:
   # activated in the `analysis_options.yaml` file located at the root of your
   # package. See that file for information about deactivating specific lint
   # rules and activating additional ones.
-  flutter_lints: ^5.0.0
+  flutter_lints: ^6.0.0
   flutter_launcher_icons: ^0.14.4
 
 # For information on the generic Dart part of this file, see the
