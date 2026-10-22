@@ -52,6 +52,9 @@ class PlayerProvider extends ChangeNotifier {
   int _playbackRetryCount = 0;
   bool _isRecovering = false;
   static const int _maxPlaybackRetries = 3;
+  bool _libraryCacheWiped = false;
+  final Set<String> _staleRecoveryAttempts = {};
+  bool _resumePlaybackAfterRecovery = false;
 
   Song? _currentSong;
   String? _currentCoverArtPath; // Local path to cached cover art
@@ -469,6 +472,7 @@ class PlayerProvider extends ChangeNotifier {
     
     if (_currentSong != null && _api != null && !_hasRestoredPosition) {
       _isRestoring = true;
+      _resumePlaybackAfterRecovery = false; // Silent restore, no auto-play
 
       // Store the position we want to restore
       final targetPosition = _position;
@@ -690,6 +694,7 @@ class PlayerProvider extends ChangeNotifier {
 
     _queue = songs;
     _currentIndex = startIndex;
+    _resumePlaybackAfterRecovery = true; // User tapped a track: intends sound
     _currentSong = songs[startIndex];
     _hasRestoredPosition = true; // New playback, not restoring
     _isRestoring = false; // Not restoring
@@ -862,6 +867,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> play() async {
+    _resumePlaybackAfterRecovery = true;
     print('[PlayerProvider] play() called, _useMpv=$_useMpv, currentSong=${_currentSong?.title}');
     // Check if we can play offline
     if (_networkProvider?.isOffline == true && !_canPlayCurrentOffline) {
@@ -920,6 +926,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> pause() async {
+    _resumePlaybackAfterRecovery = false;
     if (_useMpv) {
       await app_main.globalMpvPlayer!.pause();
     } else if (Platform.isAndroid && app_main.audioHandler != null) {
@@ -945,6 +952,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> next() async {
+    _resumePlaybackAfterRecovery = true;
     if (_queue.isEmpty || _api == null) return;
 
     // Use MpvPlayer on Linux/Windows if available
@@ -1099,6 +1107,7 @@ class PlayerProvider extends ChangeNotifier {
   }
 
   Future<void> previous() async {
+    _resumePlaybackAfterRecovery = true;
     if (_queue.isEmpty || _api == null) return;
 
     // Use MpvPlayer on Linux/Windows if available
@@ -1710,9 +1719,131 @@ class PlayerProvider extends ChangeNotifier {
     }
   }
 
+  /// Run stale-cache recovery at most once per song, keeping the regular
+  /// retry path as fallback. Returns true when playback was restored.
+  Future<bool> _guardedStaleRecovery() async {
+    if (_staleRecoveryAttempts.contains(_currentSong!.id)) return false;
+    _staleRecoveryAttempts.add(_currentSong!.id);
+
+    _isRecovering = true;
+    try {
+      final recovered = await _recoverFromStaleCache();
+      if (recovered) _playbackRetryCount = 0;
+      return recovered;
+    } finally {
+      _isRecovering = false;
+    }
+  }
+
+  /// Resolve the current song on the server by title/artist/album, wipe the
+  /// (wholesale invalid) library cache when IDs changed, repopulate the
+  /// album's tracks so upcoming queue items are playable again, remap the
+  /// queue to the fresh IDs and reload the current song.
+  Future<bool> _recoverFromStaleCache() async {
+    final song = _currentSong;
+    if (song == null || _api == null) return false;
+    // Note: no isOffline guard — NetworkProvider's detection is best-effort
+    // and false-positives at startup; if the network is truly down, search3
+    // throws and we fall through to the regular retry path.
+
+    try {
+      final results = await _api!.search3(song.title);
+      final candidates = results['songs'] as List<Song>? ?? const <Song>[];
+      final fresh = _findFreshMatch(candidates, song);
+      if (fresh == null) return false;
+
+      if (fresh.id != song.id && !_libraryCacheWiped) {
+        _libraryCacheWiped = true;
+        await DatabaseHelper.clearAllCache();
+        // clearAllCache also drops sync_metadata — re-mark the startup
+        // migration so it doesn't wipe the fresh data on next launch.
+        await DatabaseHelper.setSyncMetadata(
+            'cache_migration_v3_clear_all', DateTime.now().toIso8601String());
+      }
+
+      List<Song> albumSongs = const <Song>[];
+      if (fresh.albumId != null) {
+        try {
+          final result = await _api!.getAlbum(fresh.albumId!);
+          albumSongs = result['songs'] as List<Song>? ?? const <Song>[];
+          if (albumSongs.isNotEmpty) {
+            await DatabaseHelper.insertSongs(albumSongs);
+          }
+        } catch (_) {}
+      }
+
+      _remapQueueWithFreshSongs(song, fresh, albumSongs);
+      await _savePlayerState();
+
+      final url = _api!.getStreamUrl(fresh.id,
+          transcode: false, suffix: fresh.suffix);
+      await app_main.globalMpvPlayer!.load(
+        url,
+        autoPlay: _resumePlaybackAfterRecovery,
+        startPosition: _position.inMilliseconds > 0 ? _position : null,
+      );
+      if (kDebugMode) {
+        print(
+            '[PlayerProvider] Stale cache recovered: ${song.id} -> ${fresh.id}');
+      }
+      return true;
+    } catch (e) {
+      if (kDebugMode) {
+        print('[PlayerProvider] Stale cache recovery failed: $e');
+      }
+      return false;
+    }
+  }
+
+  /// Best server-side match for a stale song: exact title, preferring the
+  /// candidate that also matches album and artist.
+  Song? _findFreshMatch(List<Song> candidates, Song stale) {
+    String norm(String? s) => (s ?? '').trim().toLowerCase();
+    final title = norm(stale.title);
+    Song? titleOnly;
+    for (final c in candidates) {
+      if (norm(c.title) != title) continue;
+      titleOnly ??= c;
+      final albumMatches =
+          stale.album == null || norm(c.album) == norm(stale.album);
+      final artistMatches =
+          stale.artist == null || norm(c.artist) == norm(stale.artist);
+      if (albumMatches && artistMatches) return c;
+    }
+    return titleOnly;
+  }
+
+  /// Point the queue at the fresh server IDs. When the queue is the stale
+  /// song's album, swap in the freshly fetched album track list so all
+  /// upcoming tracks are playable again; otherwise replace just this song.
+  void _remapQueueWithFreshSongs(Song stale, Song fresh, List<Song> albumSongs) {
+    String norm(String? s) => (s ?? '').trim().toLowerCase();
+    final queueIsAlbum = _queue.isNotEmpty &&
+        stale.album != null &&
+        _queue.every((s) => norm(s.album) == norm(stale.album));
+
+    if (queueIsAlbum && albumSongs.isNotEmpty) {
+      var index = albumSongs.indexWhere((s) => norm(s.title) == norm(stale.title));
+      if (index < 0) index = _currentIndex.clamp(0, albumSongs.length - 1);
+      _queue = albumSongs;
+      _currentIndex = index;
+      _currentSong = _queue[index];
+    } else if (_currentIndex >= 0 && _currentIndex < _queue.length) {
+      _queue = List.of(_queue)..[_currentIndex] = fresh;
+      _currentSong = fresh;
+    } else {
+      _currentSong = fresh;
+    }
+  }
+
   /// Handle playback errors with automatic retry
   Future<void> _handlePlaybackError(dynamic error) async {
     if (_isRecovering || _currentSong == null) return;
+
+    // A track that fails to load often just has a stale cache ID (the server
+    // is ground truth, the cache only mirrors it). Silently re-resolve it
+    // from the server once before falling back to blind retries.
+    if (_useMpv && await _guardedStaleRecovery()) return;
 
     _playbackRetryCount++;
 
