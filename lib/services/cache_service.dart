@@ -44,12 +44,31 @@ class CacheService {
       final artists = await api.getArtists();
       await DatabaseHelper.insertArtists(artists);
 
-      // Fetch all albums
-      final albums = await api.getAlbumList2(
-        type: 'alphabeticalByName',
-        size: 500,
-      );
+      // Fetch ALL albums, paginating — a complete list is required both for
+      // the song caching below and for the prune to be authoritative.
+      final albums = <Album>[];
+      const pageSize = 500;
+      while (true) {
+        final page = await api.getAlbumList2(
+          type: 'alphabeticalByName',
+          size: pageSize,
+          offset: albums.length,
+        );
+        albums.addAll(page);
+        if (page.length < pageSize) break;
+      }
       await DatabaseHelper.insertAlbums(albums);
+
+      // A complete fetch is authoritative: prune cached rows the server no
+      // longer has. Single server-side deletions never trigger the startup
+      // probe's wholesale wipe, so this is where they get cleaned up. An
+      // empty page means something odd server-side — skip pruning then.
+      if (albums.isNotEmpty) {
+        await DatabaseHelper.pruneLibraryNotIn(
+          artistIds: artists.map((a) => a.id).toList(),
+          albumIds: albums.map((a) => a.id).toList(),
+        );
+      }
 
       // Cache songs for ALL albums to ensure offline browsing works
       try {

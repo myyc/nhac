@@ -24,4 +24,8 @@ the spot, never patched or migrated.
 - A wholesale ID change (server re-index) is detected by
   `CacheService.verifyCacheIntegrity()` at startup and by the first
   playback recovery; both wipe the cache once and let it re-sync.
+- Single server-side deletions are pruned on every successful *full*
+  library sync (`pruneLibraryNotIn`): a complete album list is
+  authoritative, so cached rows absent from it are evicted. Never prune
+  from a truncated/partial fetch.
 - Cache writes only ever contain data that just came from the server.
