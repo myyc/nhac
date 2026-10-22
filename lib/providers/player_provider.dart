@@ -1853,6 +1853,9 @@ class PlayerProvider extends ChangeNotifier {
       unawaited(_remapCachedAudio(stale.id, fresh.id));
       _currentSong = fresh;
     }
+
+    assert(_queue.isEmpty ||
+        (_currentIndex >= 0 && _currentIndex < _queue.length));
   }
 
   /// Move a song's on-disk audio (download/cache) from a stale ID to the
@@ -1917,6 +1920,9 @@ class PlayerProvider extends ChangeNotifier {
       notifyListeners();
       await _savePlayerState();
     }
+
+    assert(_queue.isEmpty ||
+        (_currentIndex >= 0 && _currentIndex < _queue.length));
   }
 
   /// Handle playback errors with automatic retry

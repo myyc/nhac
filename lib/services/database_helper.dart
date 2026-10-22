@@ -1072,6 +1072,11 @@ class DatabaseHelper {
     await db.delete('albums', where: 'id = ?', whereArgs: [id]);
   }
 
+  static Future<void> deleteArtist(String id) async {
+    final db = await database;
+    await db.delete('artists', where: 'id = ?', whereArgs: [id]);
+  }
+
   static Future<void> deleteSongsByAlbum(String albumId) async {
     final db = await database;
     await db.delete('songs', where: 'albumId = ?', whereArgs: [albumId]);
