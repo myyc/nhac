@@ -32,13 +32,18 @@ the spot, never patched or migrated.
 
 ## Playback rules
 
-- Never call a blocking libmpv function (`mpv_command`, `mpv_set_property`,
-  `mpv_get_property`, `mpv_wait_event`) from the UI isolate — on Linux that
-  isolate is the GTK main thread, so a wedged mpv core freezes the whole
-  app. Use `mpv_command_async` (fire-and-forget; property sets go through
-  the `set` command). The only blocking calls allowed are init-time ones
-  (`mpv_create`/options/`mpv_initialize`) and `mpv_wait_event` inside the
-  dedicated event-loop isolate.
-- Audio output order on Linux is `pulse,pipewire,alsa`: a PipeWire server
-  may silently refuse sandboxed clients (empty registry, handshake never
-  completes), and AO init must fail over instead of wedging.
+- The mpv handle is owned by the player's dedicated isolate
+  (`_playerIsolateEntry` in `lib/audio/mpv/mpv_player.dart`): every libmpv
+  call happens there, and the UI isolate only exchanges port messages.
+  Never touch `LibMpv` from the UI isolate — on Linux it is the GTK main
+  thread, so any blocking mpv call freezes the whole app. New player
+  operations are added as new isolate messages, not new FFI call sites.
+- A wedged audio backend presents as neither `fileLoaded` nor `endFile`
+  arriving after `load()`; the load watchdog turns that into an error
+  instead of hanging in `loading` forever. New playback paths must stay
+  covered by that watchdog.
+- Audio output order on Linux is `pulse,pipewire,alsa` with
+  `pulse-latency-hacks=no`: a PipeWire server may silently refuse
+  sandboxed clients (empty registry, handshake never completes), and the
+  pulse latency hacks leave streams corked against pipewire-pulse ≥ 1.6.5.
+  AO init must fail over instead of wedging.
