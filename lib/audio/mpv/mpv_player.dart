@@ -6,6 +6,7 @@ library;
 
 import 'dart:async';
 import 'dart:ffi';
+import 'dart:io';
 import 'dart:isolate';
 import 'package:ffi/ffi.dart';
 
@@ -139,6 +140,13 @@ class MpvPlayer {
     _setOption('demuxer-max-back-bytes', '10MiB'); // Back buffer
     _setOption('cache', 'yes'); // Enable cache
     _setOption('cache-secs', '30'); // Cache 30 seconds ahead
+
+    if (Platform.isLinux) {
+      // Prefer the PulseAudio socket: a PipeWire server that restricts
+      // sandboxed clients never completes the native handshake, which
+      // wedges AO init entirely.
+      _setOption('ao', 'pulse,pipewire,alsa');
+    }
 
     final result = _mpv!.mpvInitialize(_ctx!);
     if (result < 0) {
@@ -426,6 +434,10 @@ class MpvPlayer {
     await _setProperty('speed', speed.toString());
   }
 
+  // mpv_command_async never blocks on the playback core. The synchronous
+  // variant can wait on the core forever (e.g. when AO init stalls), and
+  // on Linux this isolate is the GTK main thread — a blocked call freezes
+  // the whole app.
   Future<void> _command(List<String> args) async {
     if (_ctx == null || _mpv == null) return;
 
@@ -436,7 +448,7 @@ class MpvPlayer {
     }
     argsPtr[args.length] = nullptr;
 
-    _mpv!.mpvCommand(_ctx!, argsPtr.cast());
+    _mpv!.mpvCommandAsync(_ctx!, 0, argsPtr.cast());
 
     // Free memory
     for (var i = 0; i < args.length; i++) {
@@ -446,12 +458,7 @@ class MpvPlayer {
   }
 
   Future<void> _setProperty(String name, String value) async {
-    if (_ctx == null || _mpv == null) return;
-    final namePtr = name.toNativeUtf8();
-    final valuePtr = value.toNativeUtf8();
-    _mpv!.mpvSetPropertyString(_ctx!, namePtr, valuePtr);
-    calloc.free(namePtr);
-    calloc.free(valuePtr);
+    await _command(['set', name, value]);
   }
 
   /// Dispose the player

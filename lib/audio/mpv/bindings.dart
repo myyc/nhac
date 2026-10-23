@@ -184,6 +184,11 @@ typedef _MpvCommandNative = Int32 Function(
 typedef _MpvCommand = int Function(
     Pointer<MpvHandle>, Pointer<Pointer<Utf8>>);
 
+typedef _MpvCommandAsyncNative = Int32 Function(
+    Pointer<MpvHandle>, Uint64, Pointer<Pointer<Utf8>>);
+typedef _MpvCommandAsync = int Function(
+    Pointer<MpvHandle>, int, Pointer<Pointer<Utf8>>);
+
 typedef _MpvCommandStringNative = Int32 Function(
     Pointer<MpvHandle>, Pointer<Utf8>);
 typedef _MpvCommandString = int Function(Pointer<MpvHandle>, Pointer<Utf8>);
@@ -240,6 +245,7 @@ class LibMpv {
   late final _MpvTerminateDestroy mpvTerminateDestroy;
   late final _MpvSetOptionString mpvSetOptionString;
   late final _MpvCommand mpvCommand;
+  late final _MpvCommandAsync mpvCommandAsync;
   late final _MpvCommandString mpvCommandString;
   late final _MpvSetPropertyString mpvSetPropertyString;
   late final _MpvSetProperty mpvSetProperty;
@@ -273,6 +279,10 @@ class LibMpv {
 
     mpvCommand = _lib
         .lookup<NativeFunction<_MpvCommandNative>>('mpv_command')
+        .asFunction();
+
+    mpvCommandAsync = _lib
+        .lookup<NativeFunction<_MpvCommandAsyncNative>>('mpv_command_async')
         .asFunction();
 
     mpvCommandString = _lib

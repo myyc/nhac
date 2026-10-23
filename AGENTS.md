@@ -29,3 +29,16 @@ the spot, never patched or migrated.
   authoritative, so cached rows absent from it are evicted. Never prune
   from a truncated/partial fetch.
 - Cache writes only ever contain data that just came from the server.
+
+## Playback rules
+
+- Never call a blocking libmpv function (`mpv_command`, `mpv_set_property`,
+  `mpv_get_property`, `mpv_wait_event`) from the UI isolate — on Linux that
+  isolate is the GTK main thread, so a wedged mpv core freezes the whole
+  app. Use `mpv_command_async` (fire-and-forget; property sets go through
+  the `set` command). The only blocking calls allowed are init-time ones
+  (`mpv_create`/options/`mpv_initialize`) and `mpv_wait_event` inside the
+  dedicated event-loop isolate.
+- Audio output order on Linux is `pulse,pipewire,alsa`: a PipeWire server
+  may silently refuse sandboxed clients (empty registry, handshake never
+  completes), and AO init must fail over instead of wedging.
