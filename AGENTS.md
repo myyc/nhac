@@ -29,3 +29,21 @@ the spot, never patched or migrated.
   authoritative, so cached rows absent from it are evicted. Never prune
   from a truncated/partial fetch.
 - Cache writes only ever contain data that just came from the server.
+
+## Playback rules
+
+- The mpv handle is owned by the player's dedicated isolate
+  (`_playerIsolateEntry` in `lib/audio/mpv/mpv_player.dart`): every libmpv
+  call happens there, and the UI isolate only exchanges port messages.
+  Never touch `LibMpv` from the UI isolate — on Linux it is the GTK main
+  thread, so any blocking mpv call freezes the whole app. New player
+  operations are added as new isolate messages, not new FFI call sites.
+- A wedged audio backend presents as neither `fileLoaded` nor `endFile`
+  arriving after `load()`; the load watchdog turns that into an error
+  instead of hanging in `loading` forever. New playback paths must stay
+  covered by that watchdog.
+- Audio output order on Linux is `pulse,pipewire,alsa` with
+  `pulse-latency-hacks=no`: a PipeWire server may silently refuse
+  sandboxed clients (empty registry, handshake never completes), and the
+  pulse latency hacks leave streams corked against pipewire-pulse ≥ 1.6.5.
+  AO init must fail over instead of wedging.
